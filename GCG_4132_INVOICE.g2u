@@ -1,0 +1,107 @@
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+
+F.ODBC.Connection!con.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass) 
+'connect 
+v.Local.sUser.Declare(STring) 
+v.Local.sPass.Declare(String) 
+v.Local.sSecTok.Declare(STring) 
+v.Local.sConString.Declare(String) 
+V.Local.sRet.Declare(String)
+V.Local.sSQL.Declare(String)
+
+'get Connection string
+F.ODBC.Connection!con.ExecuteAndReturn("Select rTrim(USER_NAME), rTrim(PASS), rTrim(SECTOK) From GCG_4132_CONNECTION Where NUM = '1'", V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+
+v.Local.sUser.Set(V.Local.sRet(0))
+v.Local.sPass.Set(V.Local.sRet(1))
+v.Local.sSecTok.Set(V.Local.sRet(2))
+
+'Set Connection String
+F.Intrinsic.String.Build("Offline=False;Password={1};Security Token={2};User={0};Use Sandbox=False",v.Local.sUser,v.Local.sPass,v.Local.sSecTok,v.Local.sConString) 
+'Set Connection String 
+F.Automation.SalesForce.SetConnectionString(v.Local.sConString)
+
+F.Intrinsic.Control.If(v.Caller.Hook,=,15220)
+	Function.Intrinsic.Control.CallSub(invoice)
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_INVOICE.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+
+'close the connection and program
+F.ODBC.Connection!con.Close 
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_INVOICE.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Unload.End
+
+Program.Sub.Invoice.Start
+F.Intrinsic.Control.SetErrorHandler("Invoice_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(sInvoice, ssql, sID, sOrder, sDate)
+V.Local.iC.Declare(Long)
+
+V.Local.sInvoice.Set(V.Passed.009000)
+F.Intrinsic.String.Build("Select ORDER_NO, DATE_INVOICE From V_ORDER_HIST_LINE Where Invoice = '{0}'", V.Local.sInvoice, V.Local.ssql)
+F.Data.DataTable.CreateFromSQL("ORDER_T", "con", V.Local.ssql)
+F.Intrinsic.Control.For(v.Local.iC,0,V.dataTable.ORDER_T.RowCount--,1) 
+	V.Local.sOrder.Set(V.DataTable.ORDER_T.ORDER_NO(V.Local.iC)!FieldValTrim)
+	F.Intrinsic.String.LPad(V.Local.sOrder, "0", 7, V.Local.sOrder)
+	F.Intrinsic.String.Build("Select Id From [ORDER] Where OrderNumber = '{0}'", V.Local.sOrder, V.Local.ssql)
+	F.Automation.SalesForce.SelectToDataTable("SF_ID",True,v.Local.ssql) 
+	V.Local.sID.Set(V.DataTable.SF_ID(0).ID!FieldValTrim) 
+	F.Data.DataTable.Close("SF_ID")
+	V.Local.sDate.Set(V.DataTable.ORDER_T.DATE_INVOICE(V.Local.iC)!FieldValTrim)
+	F.Intrinsic.String.Build("Update [Order] Set Invoice_Number__c = '{0}', Invoice_Date__c = '{1}' Where ID = '{2}'", V.Local.sInvoice,V.Local.sDate, V.Local.sID, V.Local.ssql)
+	F.Automation.SalesForce.ExecuteSQL(V.Local.ssql)	
+F.Intrinsic.Control.Next(v.Local.iC)	
+F.Data.DataTable.Close("ORDER_T")
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Invoice_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_INVOICE.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Invoice.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$DH1$}$2/6/2017 2:10:04 PM$}$False
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$This will be a custom GAB script that will run from a custom Menu Item under Bill of Material -> File -> Custom Cobalt BOM Import.  The user will navigate to the xml file that needs to be loaded into Global Shop.  Once the xml is parsed there will be a search in Global Shop to see if a BOM already exists for that Part Number.  If one already exists a compare screen will display showing the differences between the two.  If one does not exist then the screen will display the BOM as it will be uploaded into Global Shop.  Any parts that are listed in the BOM that are not Inventory Parts will be highlighted in Yellow.  If there are any parts not in inventory the user will have the option to click the create Parts button to generate those parts in Global Shop.  If the BOM exists in Global shop then any differences on the new import will be highlighted in Red.  After the Parts have been created then the Upload button will upload and override any previous BOM for that part.
+Program.Sub.Comments.End
