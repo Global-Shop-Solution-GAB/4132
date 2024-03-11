@@ -1,0 +1,239 @@
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+' this program updates the qty onHand for inventory in salesForce
+V.Local..BulkDeclareString(sUser, sPass, sSecTok, sConString, sRet)
+
+F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+'check dirs first- the file to check isRunning must exist
+Function.Intrinsic.Control.CallSub(check_dir)
+'For Online update: Check if the program is running.
+Function.Intrinsic.Control.CallSub(isrunning)
+
+'get Connection string
+F.ODBC.Connection!con.ExecuteAndReturn("Select rTrim(USER_NAME), rTrim(PASS), rTrim(SECTOK) From GCG_4132_CONNECTION Where NUM = '1'", V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+
+v.Local.sUser.Set(V.Local.sRet(0))
+v.Local.sPass.Set(V.Local.sRet(1))
+v.Local.sSecTok.Set(V.Local.sRet(2))
+
+'Set Connection String
+F.Intrinsic.String.Build("Offline=False;Password={1};Security Token={2};User={0};Use Sandbox=False",v.Local.sUser,v.Local.sPass,v.Local.sSecTok,v.Local.sConString) 
+'Set Connection String 
+F.Automation.SalesForce.SetConnectionString(v.Local.sConString)
+'call sub to update onhand
+Function.Intrinsic.Control.CallSub(update_onhand)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_INV_OnHand.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	'F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+V.Local.sFile.Declare(String)
+
+'path where file exists
+F.Intrinsic.String.Build("{0}\\WEb_ORDERS\INV_Running\Running_{1}.txt",V.Caller.FilesDir,"Y",V.Local.sFile)
+'delete file for the next run
+Function.Intrinsic.File.DeleteFile(V.Local.sFile)
+'close connection
+Function.ODBC.Connection!con.Close
+'end program
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_INV_OnHand.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	'F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Unload.End
+
+Program.Sub.IsRunning.Start
+F.Intrinsic.Control.SetErrorHandler("IsRunning_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+V.Local.sFile.Declare(String)
+V.Local.bExists.Declare(Boolean)
+V.Local.iPID.Declare(Long)
+V.Local.sCurrentPIDProcess.Declare(String)
+
+V.Local.iPID.Set(V.Ambient.PID)
+
+'check to see if program is already running. First check for file
+F.Intrinsic.String.Build("{0}\\WEB_ORDERS\INV_Running\Running_{1}.txt",V.Caller.FilesDir,"Y",V.Local.sFile)
+F.Intrinsic.File.Exists(V.Local.sFile,V.Local.bExists)
+F.Intrinsic.Control.If(V.Local.bExists,=,False)
+	'Create Program Status file to let it know its running
+	F.Intrinsic.File.String2File(V.Local.sFile,V.Local.iPID.String)
+Function.Intrinsic.Control.Else
+ 'then the file exists: get the PID from the file to see if the process is still running
+	F.Intrinsic.File.File2String(V.Local.sFile, V.Local.sCurrentPIDProcess)
+	F.Intrinsic.Task.PIDRunning(V.Local.sCurrentPIDProcess,V.Local.bExists)
+	Function.Intrinsic.Control.If(V.Local.bExists, =, TRUE)
+		'the the program is running- don't start new process
+		Function.Intrinsic.Control.End
+
+	Function.Intrinsic.Control.Else
+		'the program has stopped, but did not delete the file. Delete the file and create a new file for current run
+		Function.Intrinsic.File.DeleteFile(V.Local.sFile)
+		F.Intrinsic.File.String2File(V.Local.sFile,V.Local.iPID.String)
+	Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("IsRunning_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_INV_OnHand.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	'F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.IsRunning.End
+
+Program.Sub.Check_Dir.Start
+F.Intrinsic.Control.SetErrorHandler("Check_Dir_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+v.Local.i.Declare(Long)
+v.Local.sDir.Declare(String)
+v.Local.sSubDir.Declare(String)  
+v.Local.bExists.Declare(Boolean)
+'Files\WEb_ORDERS 
+F.Intrinsic.String.Build("{0}\WEB_ORDERS",v.Caller.FilesDir,v.Local.sDir) 
+F.Intrinsic.File.DirExists(v.Local.sDir,v.Local.bExists) 
+F.Intrinsic.Control.If(v.Local.bExists,=,False) 
+	f.Intrinsic.File.CreateDir(v.Local.sDir) 
+Function.Intrinsic.Control.EndIf
+F.Intrinsic.String.Split("INV_Running*!*UPLOADED*!*WEB_ERRORS*!*IS_RUNNING","*!*",v.Local.sSubDir) 
+F.Intrinsic.Control.For(v.Local.i,0,v.Local.sSubDir.UBound,1) 
+	F.Intrinsic.String.Build("{0}\{1}",v.Local.sDir,v.Local.sSubDir(v.Local.i).Trim,v.Local.sSubDir(v.Local.i)) 
+	f.Intrinsic.File.DirExists(v.Local.sSubDir(v.Local.i),v.Local.bExists) 
+	F.Intrinsic.Control.If(v.Local.bExists,=,False) 
+		f.Intrinsic.File.CreateDir(v.Local.sSubDir(v.Local.i)) 
+	Function.Intrinsic.Control.EndIf
+f.Intrinsic.Control.Next(v.Local.i) 
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Check_Dir_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_INV_OnHand.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	'F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Check_Dir.End
+
+Program.Sub.Update_Onhand.Start
+F.Intrinsic.Control.SetErrorHandler("Update_Onhand_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+V.Local.iC.Declare(Long)
+V.Local.sID.Declare(String)
+V.Local.ssql.Declare(String)
+
+'first check the data exists in the table
+F.Data.DataTable.CreateFromSQL("INV","con","Select rTrim(Part+'-'+LOCATION) as PARTLOC, PART, LOCATION, LastOnHand From GCG_4132_Inv_Custom")
+Function.Intrinsic.Control.If(V.DataTable.INV.ActiveRowCount, =, 0)
+	'then we need to prepopulate table
+	' last on hand will now be onhand - required
+	F.Data.DataTable.CreateFromSQL("InvMaster","con","Select PART, LOCATION, QTY_ONHAND,QTY_REQUIRED From INVENTORY_MSTR")
+	'create expression column for last onhand> QTY_ONHAND - QTY_REQUIRED
+'	F.Data.DataTable.AddExpressionColumn("InvMaster", "LastOnHand", "Float", "[QTY_ONHAND]-[QTY_REQUIRED]")
+	F.Data.DataTable.SaveToDB("InvMaster", "con", "GCG_4132_Inv_Custom", "", 128, "PART@!@PART*!*LOCATION@!@LOCATION*!*Qty_OnHand@!@LastOnHand")
+	'since this is the first run we can exit. The online update will pickup changes in next run.
+	F.Data.DataTable.Close("INV")
+	F.Data.DataTable.Close("InvMaster")
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.Else
+	'we need to create, check and compare columns
+	F.Data.DataTable.AddColumn("INV", "QTY_ONHAND", "Float")
+	F.Data.Dictionary.CreateFromSQL("dict", "con", "Select rTrim(Part+'-'+LOCATION) as PARTLOC, QTY_ONHAND From INVENTORY_MSTR")
+	F.Data.Dictionary.SetDefaultReturn("dict", "-1")
+	F.Data.DataTable.FillFromDictionary("INV", "dict", "PARTLOC", "QTY_ONHAND")
+	F.Data.Dictionary.Close("dict")
+	'add column QTY_REQUIRED
+	F.Data.DataTable.AddColumn("INV", "QTY_REQUIRED", "Float")
+	F.Data.Dictionary.CreateFromSQL("dict", "con", "Select rTrim(Part+'-'+LOCATION) as PARTLOC, QTY_REQUIRED From INVENTORY_MSTR")
+	F.Data.Dictionary.SetDefaultReturn("dict", "-1")
+	F.Data.DataTable.FillFromDictionary("INV", "dict", "PARTLOC", "QTY_REQUIRED")
+	F.Data.Dictionary.Close("dict")
+	'add On Order PO qty
+	F.Data.Datatable.AddColumn("INV","Qty_Onorder_PO","Float")
+	F.Data.Dictionary.CreateFromSQL("dict","con","Select rTrim(Part+'-'+LOCATION) as PARTLOC, QTY_ONORDER_PO FROM INVENTORY_MSTR")
+	F.Data.Dictionary.SetDefaultReturn("dict","-1")
+	F.Data.DataTable.FillFromDictionary("INV","dict","PARTLOC","QTY_ONORDER_PO")
+	F.Data.Dictionary.Close("dict")
+	'Add On Order WO qty
+	F.Data.DataTable.AddColumn("INV","Qty_OnOrder_WO","Float")
+	F.Data.Dictionary.CreateFromSQL("dict","con","Select rTrim(Part + '-' + LOCATION) as PARTLOC,QTY_ONORDER_WO FROM INVENTORY_MSTR")
+	F.Data.Dictionary.SetDefaultReturn("dict","-1")
+	F.Data.DataTable.FillFromDictionary("INV","dict","PARTLOC","QTY_ONORDER_WO")
+	F.Data.Dictionary.Close("dict")
+	'get current on hand QTY_ONHAND - QTY_REQUIRED
+'	Function.Data.DataTable.AddExpressionColumn("INV", "CurrentOnHand", "Float", "[QTY_ONHAND]-[QTY_REQUIRED]")
+	'create an expression column
+	Function.Data.DataTable.AddExpressionColumn("INV", "SUBTRACT", "Float", "[LastOnHand]-[QTY_ONHAND]")
+	'before reducing table, save QTY_ONHAND to LastOnHand
+	F.Data.DataTable.SaveToDB("INV", "con", "GCG_4132_Inv_Custom", "PART*!*LOCATION", 2, "PART@!@PART*!*LOCATION@!@LOCATION*!*QTY_ONHAND@!@LastOnHand")
+	Function.Data.DataView.Create("INV", "INV_V", 22, "SUBTRACT <> 0", "")
+	'update salesForce with CurrentOnHand
+	'loop through the view 
+	F.Intrinsic.Control.For(V.Local.iC, 0, Variable.DataView.INV!INV_V.RowCount--, 1)
+		'get the partID
+		F.Intrinsic.String.Build("Select Id from Product2 Where ProductCode = '{0}' and GSS_Location__c = '{1}'",Variable.DataView.INV!INV_V(V.Local.iC).PART!FieldValTrim,Variable.DataView.INV!INV_V(V.Local.iC).LOCATION!FieldValTrim,V.Local.sSQL) 
+		'select to datatable. 
+		F.Automation.SalesForce.SelectToDataTable("SF_ID",True,v.Local.sSQL) 
+		F.Intrinsic.Control.If(V.DataTable.SF_ID.RowCount, >, 0)  
+			V.Local.sID.Set(V.DataTable.SF_ID(0).ID!FieldValTrim) 
+			F.Data.DataTable.Close("SF_ID")
+			F.Intrinsic.String.Build("Update Product2 Set StockOnHand__c = '{0}', On_Order_PO_c = '{1}',On_Order_Work_Order_C = '{2}',Requirements_c = '{3}' where ID = '{4}'", Variable.DataView.INV!INV_V(V.Local.iC).QTY_ONHAND!FieldValTrim ,Variable.DataView.INV!INV_V(V.Local.iC).QTY_ONORDER_PO!FieldValTrim,Variable.DataView.INV!INV_V(V.Local.iC).QTY_ONORDER_WO!FieldValTrim,Variable.DataView.INV!INV_V(V.Local.iC).QTY_REQUIRED!FieldValTrim,V.Local.sID, V.Local.ssql)
+			F.Automation.SalesForce.ExecuteSQL(v.Local.sSQL)
+		Function.Intrinsic.Control.Else
+			F.Data.DataTable.Close("SF_ID")
+		Function.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Next(v.Local.iC)
+	
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Update_Onhand_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_INV_OnHand.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	'F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Update_Onhand.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$DH1$}$2/7/2017 9:47:04 AM$}$True
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$This will be a custom GAB script that will run from a custom Menu Item under Bill of Material -> File -> Custom Cobalt BOM Import.  The user will navigate to the xml file that needs to be loaded into Global Shop.  Once the xml is parsed there will be a search in Global Shop to see if a BOM already exists for that Part Number.  If one already exists a compare screen will display showing the differences between the two.  If one does not exist then the screen will display the BOM as it will be uploaded into Global Shop.  Any parts that are listed in the BOM that are not Inventory Parts will be highlighted in Yellow.  If there are any parts not in inventory the user will have the option to click the create Parts button to generate those parts in Global Shop.  If the BOM exists in Global shop then any differences on the new import will be highlighted in Red.  After the Parts have been created then the Upload button will upload and override any previous BOM for that part.
+Program.Sub.Comments.End
