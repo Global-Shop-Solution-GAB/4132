@@ -1,0 +1,98 @@
+Program.Sub.Preflight.Start
+v.Global.sCustomer.Declare(STring)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+'connect 
+v.Local.sUser.Declare(STring) 
+v.Local.sPass.Declare(String) 
+v.Local.sSecTok.Declare(STring) 
+v.Local.sConString.Declare(String) 
+V.Local.sRet.Declare(String)
+Function.Intrinsic.Control.If(v.Caller.Hook,=,"14350") 
+	f.Intrinsic.UI.InvokeWaitDialog("Loading...")
+	'set addl freight script 3
+	'this is for a differrent GAB script.
+	V.Passed.000203.Set("Addl Freight")
+	f.Intrinsic.Control.If(v.Caller.Switches,<>,"O") 
+		f.Intrinsic.Control.CallSub(unload)
+	Function.Intrinsic.Control.EndIf
+
+F.ODBC.Connection!con.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+	
+'get Connection string
+F.ODBC.Connection!con.ExecuteAndReturn("Select rTrim(USER_NAME), rTrim(PASS), rTrim(SECTOK) From GCG_4132_CONNECTION Where NUM = '1'", V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+
+v.Local.sUser.Set(V.Local.sRet(0))
+v.Local.sPass.Set(V.Local.sRet(1))
+v.Local.sSecTok.Set(V.Local.sRet(2))
+
+	
+	'Set Connection String
+	F.Intrinsic.String.Build("Offline=False;Password={1};Security Token={2};User={0};Use Sandbox=False",v.Local.sUser,v.Local.sPass,v.Local.sSecTok,v.Local.sConString) 
+	'Set COnnection String 
+	F.Automation.SalesForce.SetConnectionString(v.Local.sConString)
+	V.Global.sCustomer.Set(v.Passed.000002) 	
+	Function.Intrinsic.Control.CallSub(pullfromsf)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SF_Cust_Populate.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(Unload) 
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+Function.Intrinsic.UI.CloseWaitDialog
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SF_Cust_Populate.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Unload.End
+
+Program.Sub.PullFromSF.Start
+F.Intrinsic.Control.SetErrorHandler("PullFromSF_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+v.Local.sSQL.Declare(String) 
+'only pull carrier code.
+F.Intrinsic.String.Build("Select Carrier_CODE__C From Account Where Custom2__C = '{0}'",v.Global.sCustomer,v.Local.sSQL) 
+F.Automation.SalesForce.SelectToDataTable("SF_Carrier",True,v.Local.sSQL) 
+F.Intrinsic.Control.If(v.datatable.SF_Carrier.RowCount,>,0) 
+	'set carrier code to what is in our passed variable 
+	V.Passed.000094.Set(v.datatable.SF_Carrier(0).Carrier_Code__C!FieldValTrim) 
+Function.Intrinsic.Control.EndIf
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("PullFromSF_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SF_Cust_Populate.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)	
+Function.Intrinsic.Control.EndIf
+Program.Sub.PullFromSF.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$TRT$}$10/13/2016 11:11:02 AM$}$False
+${$1$}$$}$$}$0$}$14350$}$$}$10/13/2016 11:11:02 AM$}$Customer Populate
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$Quote 4132
+TRT 
+This GAB will pull fields from SF into GS. 
+
+Program.Sub.Comments.End
+
