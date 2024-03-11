@@ -1,0 +1,31 @@
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'this is to lock down the user 1 field in order lines
+Function.Intrinsic.Control.If(v.Caller.Hook, =, 12010)
+	F.Intrinsic.UI.ChangeCallerProperty(V.Passed.000077, "LOCK", 1)
+Function.Intrinsic.Control.EndIf
+
+Function.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_Lock_OrderLines.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Comments.Start
+${$0$}$GCG_4132_Lock_OrderLines.g2u$}$DH1$}$1/26/2017 1:13:43 PM$}$False
+Program.Sub.Comments.End
