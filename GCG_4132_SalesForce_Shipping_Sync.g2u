@@ -1,0 +1,215 @@
+Program.Sub.Preflight.Start
+V.Global.sOrder.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'F.ODBC.Connection!conX.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass) 
+F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+'connect 
+v.Local.sUser.Declare(STring) 
+v.Local.sPass.Declare(String) 
+v.Local.sSecTok.Declare(STring) 
+v.Local.sConString.Declare(String) 
+V.Local.sRet.Declare(String)
+V.Local.ssql.Declare(String)
+
+'get Connection string
+F.ODBC.Connection!con.ExecuteAndReturn("Select rTrim(USER_NAME), rTrim(PASS), rTrim(SECTOK) From GCG_4132_CONNECTION Where NUM = '1'", V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+
+v.Local.sUser.Set(V.Local.sRet(0))
+v.Local.sPass.Set(V.Local.sRet(1))
+v.Local.sSecTok.Set(V.Local.sRet(2))
+
+'Set Connection String
+F.Intrinsic.String.Build("Offline=False;Password={1};Security Token={2};User={0};Use Sandbox=False",v.Local.sUser,v.Local.sPass,v.Local.sSecTok,v.Local.sConString) 
+
+'Set COnnection String 
+F.Automation.SalesForce.SetConnectionString(v.Local.sConString)
+
+Function.Intrinsic.Control.If(V.Caller.Hook,=,"28532") 
+	V.Global.sOrder.Set(V.Passed.FIRST-ORDER)
+	'Sync Shipping 	
+	Function.Intrinsic.Control.CallSub(SyncShip)
+Function.Intrinsic.Control.ElseIf(V.Caller.Hook,=,"41480") 
+	'get order number from packing list
+	F.Intrinsic.String.Build("Select Top 1 Order_No From SHIPMENT_LINES Where Orig_Pck_No = '{0}'", V.Passed.PACKINGLIST, V.Local.ssql)
+	F.ODBC.Connection!con.ExecuteAndReturn(V.Local.ssql, V.Global.sOrder)
+	Function.Intrinsic.Control.CallSub(stage_ship)
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Shipping_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.SyncShip.Start
+F.Intrinsic.Control.SetErrorHandler("SyncShip_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareLong(iRowCount, iC)
+V.Local..BulkDeclareString(sSql,sFreightCharges, sDateShip, sTracking, sId, sRet, sOrder_Rec, sTotalShipped, sOrderItemId)
+
+'add freight
+F.Intrinsic.String.Build("Select PRICE From Shipment_Lines Where LINE_TYPE = 'F' and ORDER_NO = '{0}'",V.Global.sOrder, V.Local.sSql)
+F.Data.DataTable.CreateFromSQL("Freight", "con",V.Local.sSql)
+F.Data.DataTable.Compute("Freight", "Sum(PRICE)","", V.Local.sFreightCharges)
+F.Data.DataTable.Close("Freight")
+'add tracking and DateShip
+F.Intrinsic.String.Build("Select Top 1 TRACKING_NO, DATE_SHIPPED From V_SHIPMENT_HEADER Where ORDER_REC = '  A ' and ORDER_NO = '{0}' Order By ORDER_SUFFIX desc",V.Global.sOrder, V.Local.sSql)
+Function.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSql, V.Local.sRet) 
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+V.Local.sTracking.Set(V.Local.sRet(0))
+V.Local.sDateShip.Set(V.Local.sRet(1))
+
+'pad the orderNumber to get Primary Key > Id
+F.Intrinsic.String.LPad(V.Global.sOrder, "0", 7, V.Global.sOrder)
+F.Intrinsic.String.Build("Select [Order].Id  From [ORDER] Where [Order].OrderNumber = '{0}'", V.Global.sOrder, V.Local.sSql)
+Function.Automation.SalesForce.SelectToDataTable("Table_A", True, V.Local.sSql)
+Function.Intrinsic.Control.If(V.DataTable.Table_A.RowCount, =, 1)
+	V.Local.sId.Set(V.DataTable.Table_A(0).Id!Fieldvaltrim)
+Function.Intrinsic.Control.Else
+	F.Intrinsic.UI.Msgbox("This Order Number Does Not Exist In SalesForce")
+	Function.Intrinsic.Control.ExitSub
+Function.Intrinsic.Control.EndIf
+F.Intrinsic.String.Build("Update [Order] Set Tracking__c = '{0}', Shipped_Date__c = '{1}', FreightCharges__c = '{2}'  Where Id = '{3}'", V.Local.sTracking,V.Local.sDateShip,V.Local.sFreightCharges,V.Local.sId,V.Local.sSql) 
+Function.Automation.SalesForce.ExecuteSQL(v.Local.sSql)
+
+Function.Intrinsic.BDF.Load("AUX001", "AUX001")
+Function.Intrinsic.BDF.ReadRowCount("AUX001", V.Local.iRowCount)
+F.Intrinsic.Math.Sub(V.Local.iRowCount, 1, V.Local.iRowCount)
+
+'Qty Shipped
+F.Intrinsic.Control.For(V.Local.iC, 0, V.Local.iRowCount, 1)
+	Function.Intrinsic.BDF.ReadRow("AUX001", V.Local.iC, v.Local.sRet)
+	F.Intrinsic.String.Split(v.Local.sRet, "|~|", V.Local.sRet)
+'get the order_rec number for shipment lines and pad for format
+	V.Local.sOrder_Rec.Set(V.Local.sRet(1))
+	F.Intrinsic.String.LPad(V.Local.sOrder_Rec, 0, 3, V.Local.sOrder_Rec)
+	F.Intrinsic.String.RPad(V.Local.sOrder_Rec, 0, 4, V.Local.sOrder_Rec)
+	'select get total shipped
+	F.Intrinsic.String.Right(V.Global.sOrder, 7, V.Global.sOrder)
+	F.Intrinsic.String.Build("Select rTrim(QTY_SHIPPED) From Order_Lines Where ORDER_NO = '{0}' And Record_No = '{1}'", V.Global.sOrder, V.Local.sOrder_Rec, V.Local.sSql)
+	Function.ODBC.Connection!con.ExecuteAndReturn(V.Local.ssql, V.Local.sTotalShipped)
+	'get the orderItem ID for the salesforce update
+	F.Intrinsic.String.Build("Select rTrim(USER_1) From ORDER_LINES Where ORDER_NO = '{0}' And RECORD_NO = '{1}'", V.Global.sOrder, V.Local.sOrder_Rec, V.Local.sSql)
+	Function.ODBC.Connection!con.ExecuteAndReturn(V.Local.ssql, V.Local.sOrderItemId) 
+	'update salesForce here for the qty shipped
+	F.Intrinsic.String.Build("Update ORDERITEM Set Qty_Shipped__c = '{0}' Where Id = '{1}'", V.Local.sTotalShipped,V.Local.sOrderItemId, V.Local.sSql) 
+	Function.Automation.SalesForce.ExecuteSQL(v.Local.sSql)
+F.Intrinsic.Control.Next(V.Local.iC)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("SyncShip_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Shipping_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.SyncShip.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Shipping_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Unload.End
+
+Program.Sub.Stage_Ship.Start
+F.Intrinsic.Control.SetErrorHandler("Stage_Ship_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareLong(iRowCount, iC)
+V.Local..BulkDeclareString(sSql,sFreightCharges, sDateShip, sTracking, sId, sRet, sOrder_Rec, sTotalShipped, sOrderItemId, sLines)
+
+'add freight
+F.Intrinsic.String.Build("Select PRICE From Shipment_Lines Where LINE_TYPE = 'F' and ORDER_NO = '{0}'",V.Global.sOrder, V.Local.sSql)
+F.Data.DataTable.CreateFromSQL("Freight", "con",V.Local.sSql)
+F.Data.DataTable.Compute("Freight", "Sum(PRICE)","", V.Local.sFreightCharges)
+F.Data.DataTable.Close("Freight")
+'add tracking and DateShip
+F.Intrinsic.String.Build("Select Top 1 TRACKING_NO, DATE_SHIPPED From V_SHIPMENT_HEADER Where ORDER_REC = '  A ' and ORDER_NO = '{0}' Order By ORDER_SUFFIX desc",V.Global.sOrder, V.Local.sSql)
+Function.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSql, V.Local.sRet) 
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+V.Local.sTracking.Set(V.Local.sRet(0))
+V.Local.sDateShip.Set(V.Local.sRet(1))
+
+'pad the orderNumber to get Primary Key > Id
+F.Intrinsic.String.LPad(V.Global.sOrder, "0", 7, V.Global.sOrder)
+F.Intrinsic.String.Build("Select [Order].Id  From [Order] Where [Order].OrderNumber = '{0}'", V.Global.sOrder, V.Local.sSql)
+Function.Automation.SalesForce.SelectToDataTable("Table_A", True, V.Local.sSql)
+Function.Intrinsic.Control.If(V.DataTable.Table_A.RowCount, =, 1)
+	V.Local.sId.Set(V.DataTable.Table_A(0).Id!Fieldvaltrim)
+Function.Intrinsic.Control.Else
+	F.Intrinsic.UI.Msgbox("This Order Number Does Not Exist In SalesForce")
+	Function.Intrinsic.Control.ExitSub
+Function.Intrinsic.Control.EndIf
+F.Intrinsic.String.Build("Update [Order] Set Tracking__c = '{0}', Shipped_Date__c = '{1}', FreightCharges__c = '{2}'  Where Id = '{3}'", V.Local.sTracking,V.Local.sDateShip,V.Local.sFreightCharges,V.Local.sId,V.Local.sSql) 
+Function.Automation.SalesForce.ExecuteSQL(v.Local.sSql)
+
+F.Intrinsic.String.Build("Select ORDER_REC From SHIPMENT_LINES Where ORIG_PCK_NO = '{0}' And LINE_TYPE = 'S'", V.Passed.PACKINGLIST, V.Local.sSql)
+F.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSql, V.Local.sLines)
+F.Intrinsic.String.Replace(V.Local.sLines, "*!*", "", V.Local.sLines)
+F.Intrinsic.String.Split(V.Local.sLines, "#$#", V.Local.sLines)
+'Qty Shipped
+F.Intrinsic.Control.For(V.Local.iC, 0, V.Local.sLines.UBound, 1)
+	V.Local.sOrder_Rec.Set(V.Local.sLines(V.Local.iC))
+	'select get total shipped
+	F.Intrinsic.String.Right(V.Global.sOrder, 7, V.Global.sOrder)
+	F.Intrinsic.String.Build("Select rTrim(QTY_SHIPPED) From Order_Lines Where ORDER_NO = '{0}' And Record_No = '{1}'", V.Global.sOrder, V.Local.sOrder_Rec, V.Local.sSql)
+	Function.ODBC.Connection!con.ExecuteAndReturn(V.Local.ssql, V.Local.sTotalShipped)
+	'get the orderItem ID for the salesforce update
+	F.Intrinsic.String.Build("Select rTrim(USER_1) From ORDER_LINES Where ORDER_NO = '{0}' And RECORD_NO = '{1}'", V.Global.sOrder, V.Local.sOrder_Rec, V.Local.sSql)
+	Function.ODBC.Connection!con.ExecuteAndReturn(V.Local.ssql, V.Local.sOrderItemId) 
+	'update salesForce here for the qty shipped
+	F.Intrinsic.String.Build("Update ORDERITEM Set Qty_Shipped__c = '{0}' Where Id = '{1}'", V.Local.sTotalShipped,V.Local.sOrderItemId, V.Local.sSql) 
+	Function.Automation.SalesForce.ExecuteSQL(v.Local.sSql)
+F.Intrinsic.Control.Next(V.Local.iC)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Stage_Ship_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Shipping_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Stage_Ship.End
+
+Program.Sub.Comments.Start
+${$0$}$GCG_4132_SalesForce_Shipping_Sync.g2u$}$DH1$}$1/4/2017 9:32:38 AM$}$False
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$'This is for Quickmount customer 
+we are givine them custom places to track FedEx Account Number, Third Party Freight 
+and UPS Account Number. 
+
+Save to custom GCG_4132_Frght_Info
+Program.Sub.Comments.End
