@@ -1,0 +1,371 @@
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+v.Local.sUser.Declare(STring) 
+v.Local.sPass.Declare(String) 
+v.Local.sSecTok.Declare(STring) 
+v.Local.sConString.Declare(String) 
+V.Local.iNum.Declare(Long)
+V.Local.sSql.Declare(String)
+V.Local.sStr.Declare(String)
+V.Local.sRow.Declare(String)
+V.Local.iAlignment.Declare(Long)
+V.Local.iLength.Declare(Long)
+V.Local.iUBound.Declare(Long)
+V.Local.sRet.Declare(String)
+V.Local.sLine.Declare(String)
+V.Local.sFile.Declare(String)
+V.Local.sPart.Declare(String)
+V.Local.sFilePath.Declare(String)
+V.Local.sParams.Declare(String)
+V.Local.sRowLines.Declare(String)
+V.Local.iUBoundLines.Declare(Long)
+V.Local.iLines.Declare(Long)
+V.Local.sLineLine.Declare(String)
+v.Local.sCWRet.Declare(STring) 
+v.Local.sOrderLine.Declare(string) 
+v.Local.iOL.Declare(Long) 
+V.Local.sFilter.Declare(String)
+V.Local.sError.Declare(String)
+
+
+'program to run continuously for Quick Mount to update their inventory in SalesForce
+'coded by: WAW
+'date: 1/24/17
+
+F.ODBC.Connection!conx.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+'check the dir
+f.Intrinsic.Control.CallSub(check_dir)
+
+'call the is running sub
+f.Intrinsic.Control.CallSub(isrunning)
+
+'get Connection string
+F.ODBC.Connection!conx.ExecuteAndReturn("Select * From GCG_4132_CONNECTION Where NUM = '1'", V.Local.sRet)
+
+'F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+'Function.Intrinsic.String.WeakDecryption(V.Local.sRet(1), v.Local.sUser)
+'Function.Intrinsic.String.WeakDecryption(V.Local.sRet(2), v.Local.sPass)
+'Function.Intrinsic.String.WeakDecryption(V.Local.sRet(3), v.Local.sSecTok)
+
+v.Local.sUser.Set("sfulsom@gssmail.com") 
+v.Local.sPass.Set("!J!mm!e48")  
+v.Local.sSecTok.Set("YbMDhAwRVFsi0wwt2YZUE6lT")
+
+'Set Connection String
+F.Intrinsic.String.Build("Offline=False;Password={1};Security Token={2};User={0};Use Sandbox=False",v.Local.sUser,v.Local.sPass,v.Local.sSecTok,v.Local.sConString) 
+
+'Set Connection String 
+F.Automation.SalesForce.SetConnectionString(v.Local.sConString)
+
+'build the datatable
+f.Intrinsic.Control.CallSub(createdatatable)
+
+'upload
+f.Intrinsic.Control.CallSub(upload)
+
+'call the unload sub
+f.Intrinsic.Control.CallSub(unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_Inv_Watchdog.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	f.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'close connection
+f.ODBC.Connection!conx.Close
+f.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_Inv_Watchdog.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	f.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Unload.End
+
+Program.Sub.isrunning.Start
+F.Intrinsic.Control.SetErrorHandler("isrunning_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+V.Local.sFile.Declare(String)
+V.Local.bExists.Declare(Boolean)
+V.Local.iPID.Declare(Long)
+V.Local.sCurrentPIDProcess.Declare(String)
+
+V.Local.iPID.Set(V.Ambient.PID)
+
+'check to see if program is already running. First check for file
+F.Intrinsic.String.Build("{0}\\INV_SYNC\IS_RUNNING\Running_{1}.txt",V.Caller.FilesDir,"Y",V.Local.sFile)
+F.Intrinsic.File.Exists(V.Local.sFile,V.Local.bExists)
+F.Intrinsic.Control.If(V.Local.bExists,=,False)
+	'Create Program Status file to let it know its running
+	F.Intrinsic.File.String2File(V.Local.sFile,V.Local.iPID.String)
+Function.Intrinsic.Control.Else
+ 'then the file exists: get the PID from the file to see if the process is still running
+	F.Intrinsic.File.File2String(V.Local.sFile, V.Local.sCurrentPIDProcess)
+	F.Intrinsic.Task.PIDRunning(V.Local.sCurrentPIDProcess,V.Local.bExists)
+	Function.Intrinsic.Control.If(V.Local.bExists, =, TRUE)
+		'the the program is running- don't start new process
+		Function.Intrinsic.Control.End
+
+	Function.Intrinsic.Control.Else
+		'the program has stopped, but did not delete the file. Delete the file and create a new file for current run
+		Function.Intrinsic.File.DeleteFile(V.Local.sFile)
+		F.Intrinsic.File.String2File(V.Local.sFile,V.Local.iPID.String)
+	Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("isrunning_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_Inv_Watchdog.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	f.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.isrunning.End
+
+Program.Sub.Check_Dir.Start
+F.Intrinsic.Control.SetErrorHandler("Check_Dir_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.i.Declare(Long)
+v.Local.sDir.Declare(String)
+v.Local.sSubDir.Declare(String)  
+v.Local.bExists.Declare(Boolean)
+
+'Files\INV_SYNC
+F.Intrinsic.String.Build("{0}\INV_SYNC",v.Caller.FilesDir,v.Local.sDir) 
+F.Intrinsic.File.DirExists(v.Local.sDir,v.Local.bExists) 
+F.Intrinsic.Control.If(v.Local.bExists,=,False) 
+	f.Intrinsic.File.CreateDir(v.Local.sDir) 
+Function.Intrinsic.Control.EndIf
+F.Intrinsic.String.Split("CONVERTED*!*UPLOADED*!*INV_SYNC*!*IS_RUNNING","*!*",v.Local.sSubDir) 
+F.Intrinsic.Control.For(v.Local.i,0,v.Local.sSubDir.UBound,1) 
+	F.Intrinsic.String.Build("{0}\{1}",v.Local.sDir,v.Local.sSubDir(v.Local.i).Trim,v.Local.sSubDir(v.Local.i)) 
+	f.Intrinsic.File.DirExists(v.Local.sSubDir(v.Local.i),v.Local.bExists) 
+	F.Intrinsic.Control.If(v.Local.bExists,=,False) 
+		f.Intrinsic.File.CreateDir(v.Local.sSubDir(v.Local.i)) 
+	Function.Intrinsic.Control.EndIf
+f.Intrinsic.Control.Next(v.Local.i) 
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Check_Dir_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_Inv_Watchdog.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	f.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Check_Dir.End
+
+Program.Sub.Upload.Start
+F.Intrinsic.Control.SetErrorHandler("Upload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.ddate.Declare(date)
+v.Local.stime.Declare(string)
+v.Local.ssql.Declare(string)
+v.Local.spart.Declare(string)
+v.Local.irow.Declare(long)
+v.Local.fpkgdweight.Declare(float)
+v.Local.fpcspercntnr.Declare(float)
+v.Local.fcntnrsperpallet.Declare(float)
+v.Local.sreqtesting.Declare(string)
+v.Local.fintransit.Declare(float)
+v.Local.i.Declare(long)
+v.Local.ssql2.Declare(string)
+v.Local.sid.Declare(string)
+v.Local.iC.Declare(long)
+'create a boolean for the inactive flag
+v.Local.binactive.Declare(boolean)
+
+v.Local.ddate.Set(v.Ambient.Date)
+
+'Get Data From Inventory_Mstr
+F.Intrinsic.String.Build("Select V_Inventory_Mstr.PART,Location,Description,Bin,Qty_Onhand,Product_Line,DATE_LAST_CHG,TIME_LAST_CHG,Flag_Inactive,Code_Sort,Time_Material_Lead,UM_PURCHASING,UM_INVENTORY,QTY_onorder_PO,QTY_onorder_WO,QTY_reorder,Qty_Safety,V_INVENTORY_MST2.Description_2,V_Inventory_MST2.TEXT_INFO1,V_INVENTORY_MST2.TEXT_INFO2 From V_Inventory_mstr Left Join V_Inventory_mst2 on V_Inventory_mstr.PART = V_INVENTORY_MST2.PART and V_INVENTORY_MSTR.LOCATION = V_Inventory_Mst2.Location  Where V_INVENTORY_MSTR.DATE_LAST_CHG = '{0}' and V_INVENTORY_MSTR.PART <> '{1}'",v.Local.ddate.PervasiveDate,"",v.Local.sSQL) 
+F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+Function.Intrinsic.Control.DoUntil(v.ODBC.conX!rst.EOF,=,True) 
+	'check to see if this is the first
+	v.Local.i.Set(v.dataTable.INVSYNC.RowCount--)
+	
+	'check the inactive flag to see if Y set boolean to True otherwise False
+	f.Intrinsic.Control.If(v.ODBC.conX!rst.FieldValTrim!FLAG_INACTIVE,=,"Y")
+		'set to true
+		v.Local.binactive.Set(True)
+	f.Intrinsic.Control.Else
+		'set to false
+		v.Local.binactive.Set(False)
+	f.Intrinsic.Control.EndIf
+	
+	f.Intrinsic.Control.If(v.Local.i,<>,-1)
+		'add the rows
+		f.Data.DataTable.AddRow("INVSYNC","PART",v.ODBC.conx!rst.FieldValTrim!PART,"Location",v.ODBC.conx!rst.FieldValTrim!LOCATION,"DESCRIPTION",v.ODBC.conx!rst.FieldValTrim!DESCRIPTION,"BIN",v.ODBC.conx!rst.FieldValTrim!BIN,"QTY_ONHAND",v.ODBC.conx!rst.FieldValTrim!QTY_ONHAND,"Product_Line",v.ODBC.conx!rst.FieldValTrim!Product_Line,"Flag_Inactive",v.Local.binactive,"CODE_SORT",v.ODBC.conx!rst.FieldValTrim!CODE_SORT,"TIME_MATERIAL_LEAD",v.ODBC.conx!rst.FieldValTrim!TIME_MATERIAL_LEAD,"UM_PURCHASING",v.ODBC.conx!rst.FieldValTrim!UM_PURCHASING,"UM_INVENTORY",v.ODBC.conx!rst.FieldValTrim!UM_INVENTORY,"qty_onorder_PO",v.ODBC.conx!rst.FieldValTrim!QTY_ONORDER_PO,"QTY_ONorder_WO",v.ODBC.conx!rst.FieldValTrim!QTY_ONorder_wo,"qty_reorder",v.ODBC.conx!rst.FieldValTrim!Qty_reorder,"qty_safety",v.ODBC.conx!rst.FieldValTrim!Qty_Safety,"Description_2",v.ODBC.conx!rst.FieldValTrim!Description_2,"TEXT_INFO1",v.ODBC.conx!rst.FieldValTrim!TEXT_INFO1,"TEXT_INFO2",v.ODBC.conx!rst.FieldValTrim!TEXT_INFO2)
+	f.Intrinsic.Control.Else
+		'set the values
+		f.Data.DataTable.AddRow("INVSYNC","PART",v.ODBC.conx!rst.FieldValTrim!PART,"Location",v.ODBC.conx!rst.FieldValTrim!LOCATION,"DESCRIPTION",v.ODBC.conx!rst.FieldValTrim!DESCRIPTION,"BIN",v.ODBC.conx!rst.FieldValTrim!BIN,"QTY_ONHAND",v.ODBC.conx!rst.FieldValTrim!QTY_ONHAND,"Product_Line",v.ODBC.conx!rst.FieldValTrim!Product_Line,"Flag_Inactive",v.Local.binactive,"CODE_SORT",v.ODBC.conx!rst.FieldValTrim!CODE_SORT,"TIME_MATERIAL_LEAD",v.ODBC.conx!rst.FieldValTrim!TIME_MATERIAL_LEAD,"UM_PURCHASING",v.ODBC.conx!rst.FieldValTrim!UM_PURCHASING,"UM_INVENTORY",v.ODBC.conx!rst.FieldValTrim!UM_INVENTORY,"qty_onorder_PO",v.ODBC.conx!rst.FieldValTrim!QTY_ONORDER_PO,"QTY_ONorder_WO",v.ODBC.conx!rst.FieldValTrim!QTY_ONorder_wo,"qty_reorder",v.ODBC.conx!rst.FieldValTrim!Qty_reorder,"qty_safety",v.ODBC.conx!rst.FieldValTrim!Qty_Safety,"Description_2",v.ODBC.conx!rst.FieldValTrim!Description_2,"TEXT_INFO1",v.ODBC.conx!rst.FieldValTrim!TEXT_INFO1,"TEXT_INFO2",v.ODBC.conx!rst.FieldValTrim!TEXT_INFO2)
+	f.Intrinsic.Control.EndIf
+	
+	'packaged weight, pieces per container, containers per pallet, requires testing
+	f.Intrinsic.String.Build("Select Pkgd_Weight, Pcs_Per_Cntnr, Cntnrs_Per_Pallet, Requires_Testing From V_Inventory_Mst3 Where Part = '{0}' and PART <> '{2}' and LOCATION = '{1}'",v.ODBC.conx!rst.FieldValTrim!PART,v.ODBC.conx!rst.FieldValTrim!LOCATION,"",v.Local.sSQL2) 
+	F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst2",v.Local.sSQL2) 
+	Function.Intrinsic.Control.If(v.ODBC.conX!rst2.EOF,=,False)
+		F.Data.DataTable.SetValue("INVSYNC",V.Local.i,"Pkgd_Weight",v.ODBC.conx!rst2.FieldValTrim!Pkgd_Weight)
+		F.Data.DataTable.SetValue("INVSYNC",V.Local.i,"Pcs_Per_Cntnr",v.ODBC.conx!rst2.FieldValTrim!Pcs_Per_Cntnr)
+		F.Data.DataTable.SetValue("INVSYNC",V.Local.i,"Cntnrs_Per_Pallet",v.ODBC.conx!rst2.FieldValTrim!Cntnrs_Per_Pallet)
+		F.Data.DataTable.SetValue("INVSYNC",V.Local.i,"Requires_Testing",v.ODBC.conx!rst2.FieldValTrim!Requires_Testing)
+	f.Intrinsic.Control.EndIf
+	f.ODBC.conx!rst2.Close
+
+	'lot and in transity qty
+	F.Intrinsic.String.Build("Select Lot, In_Transit_Qty From V_Item_Master Where Part = '{0}' and LOCATION = '{1}'",v.ODBC.conx!rst.FieldValTrim!Part,v.ODBC.conx!rst.FieldValTrim!LOCATION,v.Local.sSQL2) 
+	f.ODBC.Connection!conX.OpenLocalRecordsetRO("rst2",v.Local.sSQL2) 
+	F.Intrinsic.Control.If(v.ODBC.conX!rst2.EOF,=,False) 
+		f.Intrinsic.Control.If(v.Local.i,>,0)
+			'add the rows
+			f.Data.DataTable.AddRow("INVSYNC","Lot",v.ODBC.conX!rst2.FieldVal!Lot,"In_Transit_Qty",v.ODBC.conx!rst2.FieldValTrim!In_Transit_Qty) 	
+		f.Intrinsic.Control.Else
+			'set the values
+			f.Data.DataTable.SetValue("INVSYNC",0,"Lot",v.ODBC.conX!rst2.FieldVal!Lot,"In_Transit_Qty",v.ODBC.conx!rst2.FieldValTrim!In_Transit_Qty) 	
+		f.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.EndIf
+	F.ODBC.conX!rst2.Close 
+'move to the next record and close the connection
+F.ODBC.conx!rst.MoveNext
+Function.Intrinsic.Control.Loop
+f.ODBC.conx!rst.Close
+
+'loop through INVSYNCE datatable to get hte IDs in salesforce for each part
+F.Intrinsic.Control.For(v.Local.iC,0,v.dataTable.INVSYNC.RowCount--,1) 
+	F.Intrinsic.String.Build("Select Id from Product2 Where ProductCode = '{0}' and GSS_Location__c = '{1}'",v.DataTable.INVSYNC(v.Local.i).Part!FieldValTrim,v.datatable.INVSYNC(v.Local.i).Location!fieldvaltrim,v.Local.sSQL) 
+'	'select to datatable. 
+	F.Automation.SalesForce.SelectToDataTable("SF_ID",True,v.Local.sSQL) 
+	F.Intrinsic.Control.If(v.DataTable.SF_ID.RowCount,>,0)  
+'	F.Intrinsic.Control.If(v.DataTable.SF_ID(0).ID!fieldvaltrim,>,0)  
+		'Means this record already exists in SF so we don't have to add it, but we want that id. 
+		'always assume it's 1
+		V.Local.sID.Set(v.DataTable.SF_ID(0).ID!FieldValTrim) 		
+	Function.Intrinsic.Control.Else 
+		'means it doesn't exist in salesforce. 
+		'we got to execute and return ID. 
+		'create new one. 
+		F.Intrinsic.String.Build("Insert Into Product2 (ProductCode,Name) Values ('{0}','{1}')",v.dataTable.INVSYNC(v.Local.iC).Part.FieldValTrim,v.dataTable.INVSYNC(v.Local.iC).Description!FieldValTrim,v.Local.sSQL) 
+		F.Automation.SalesForce.ExecuteSQLREturnID(v.Local.sSQL,v.Local.sID) 
+	Function.Intrinsic.Control.EndIf 
+	f.Data.DataTable.Close("SF_ID")
+	'desc, bin, qty on hand, pL, flag inactive, code sort, time material lead, um purchasing
+	F.Intrinsic.String.Build("Update Product2 Set Product_ID__c = '{0}', Bin_Number__c = '{1}', Lot_Number__c = '{2}', StockOnHand__c = '{3}', Product_Line_Code__c = '{4}', Inactive__c = '{5}', Finish__c = '{6}', LeadTimeDays__c = '{7}', Purchasing_Unit_of_Measure__c = '{8}'",v.DataTable.INVSYNC(v.Local.iC).Description!FieldValTrim,v.dataTable.INVSYNC(v.Local.iC).Bin!FieldValTrim,v.dataTable.INVSYNC(v.Local.iC).Lot!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Qty_Onhand!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Product_Line!FieldValTrim,v.datatable.INVSYNC(v.Local.iC).Flag_Inactive!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Code_Sort!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Time_Material_Lead!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).UM_PURCHASING!Fieldvaltrim,v.Local.sSQL) 
+'	UM inventory, qty on order p, qty on order wo, qty reorder, qty safety	
+	F.Intrinsic.String.Build("{0}, Inventory_Selling_Unit_of_Measure__c = '{1}', On_Order_PO__c = '{2}',On_Order_Work_Order__C = '{3}', Reorder_Point__c = '{4}',Units_per_Box__c = '{5}'",v.Local.sSQL,v.DataTable.INVSYNC(v.Local.iC).UM_Inventory!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Qty_Onorder_PO!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Qty_Onorder_WO!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Qty_Reorder!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Qty_Safety!FieldValTrim,v.Local.sid,v.Local.ssql)
+	'original code for second line
+	'description 2, description 3, user 1, user 2, in transit
+	f.Intrinsic.String.Build("{0}, Description = '{1}', Product_Dimension__c = '{2}', Family = '{3}', Category2__c = '{4}', In_transit__c = '{5}'",v.Local.sSQL,v.DataTable.INVSYNC(v.Local.iC).Description_2!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Description_3!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Text_Info1!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Text_Info2!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).In_transit_Qty!FieldValTrim,v.Local.sSQL)
+	'packaged weight, pieces per carton, cartons per pallet, requirements
+	f.Intrinsic.String.Build("{0}, Requirements__c = '{1}', Pieces_Cartons_per_pallet__c = '{2}', Pieces_per_Carton__c = '{3}', Packaged_weight__c = '{4}' where ID = '{5}'",v.Local.sSQL,v.DataTable.INVSYNC(v.Local.iC).Requires_Testing!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Cntnrs_Per_Pallet!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Pcs_per_Cntnr!FieldValTrim,v.DataTable.INVSYNC(v.Local.iC).Pkgd_Weight!FieldValTrim,v.Local.sID,v.Local.sSQL)
+	F.Automation.SalesForce.ExecuteSQL(v.Local.sSQL) 
+f.Intrinsic.Control.Next(v.Local.iC)
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Upload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_Inv_Watchdog.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	f.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Upload.End
+
+Program.Sub.Createdatatable.Start
+F.Intrinsic.Control.SetErrorHandler("Createdatatable_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+F.Data.DataTable.Create("INVSYNC",True) 
+
+'inventory master datatable. 
+F.Data.DataTable.AddColumn("INVSYNC","Part",String) 
+F.Data.DataTable.AddColumn("INVSYNC","Description",String) 
+F.Data.DataTable.AddColumn("INVSYNC","Bin",String) 
+F.Data.DataTable.AddColumn("INVSYNC","Qty_Onhand",float) 
+F.Data.DataTable.AddColumn("INVSYNC","Product_Line",string) 
+F.Data.DataTable.AddColumn("INVSYNC","Flag_Inactive",string) 
+F.Data.DataTable.AddColumn("INVSYNC","Code_Sort",string) 
+F.Data.DataTable.AddColumn("INVSYNC","Time_Material_Lead",float) 
+F.Data.DataTable.AddColumn("INVSYNC","UM_Purchasing",string) 
+F.Data.DataTable.AddColumn("INVSYNC","UM_Inventory",string) 
+F.Data.DataTable.AddColumn("INVSYNC","Qty_Onorder_PO",float) 
+F.Data.DataTable.AddColumn("INVSYNC","Qty_Onorder_WO",float) 
+F.Data.DataTable.AddColumn("INVSYNC","Qty_Reorder",float) 
+F.Data.DataTable.AddColumn("INVSYNC","Qty_Safety",float) 
+
+'inventory master 2 
+F.Data.DataTable.AddColumn("INVSYNC","Description_2",String) 
+F.Data.DataTable.AddColumn("INVSYNC","Description_3",String) 
+F.Data.DataTable.AddColumn("INVSYNC","TEXT_INFO1",String) 
+F.Data.DataTable.AddColumn("INVSYNC","TEXT_INFO2",String) 
+
+'item master data 
+F.Data.DataTable.AddColumn("INVSYNC","Lot",String) 
+F.Data.DataTable.AddColumn("INVSYNC","In_Transit_Qty",float) 
+
+'Inventory master 3
+F.Data.DataTable.AddColumn("INVSYNC","Pkgd_Weight",float) 
+F.Data.DataTable.AddColumn("INVSYNC","Pcs_Per_Cntnr",float) 
+F.Data.DataTable.AddColumn("INVSYNC","Cntnrs_Per_Pallet",float) 
+F.Data.DataTable.AddColumn("INVSYNC","Requires_Testing",string) 
+
+'Custom/custom calculated fields
+F.Data.DataTable.AddColumn("INVSYNC","Location",String) 
+F.Data.DataTable.AddColumn("INVSYNC","Net",float) 
+F.Data.DataTable.AddColumn("INVSYNC","In_Inspection",float) 
+F.Data.DataTable.AddColumn("INVSYNC","In_Quality",float) 
+F.Data.DataTable.AddColumn("INVSYNC","Allocated",float)
+F.Data.DataTable.AddColumn("INVSYNC","List_Price",float)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Createdatatable_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_Inv_Watchdog.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	f.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Createdatatable.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$$}$12:00:00 AM$}$False
+Program.Sub.Comments.End
