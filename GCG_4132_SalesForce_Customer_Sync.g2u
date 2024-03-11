@@ -1,0 +1,403 @@
+Program.Sub.Preflight.Start
+Variable.Global.sCustomer.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+F.ODBC.Connection!conX.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass) 
+'connect 
+v.Local.sUser.Declare(STring) 
+v.Local.sPass.Declare(String) 
+v.Local.sSecTok.Declare(STring) 
+v.Local.sConString.Declare(String) 
+V.Local.sRet.Declare(String)
+''get Connection string
+
+
+'get Connection string
+F.ODBC.Connection!conX.ExecuteAndReturn("Select rTrim(USER_NAME), rTrim(PASS), rTrim(SECTOK) From GCG_4132_CONNECTION Where NUM = '1'", V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+
+v.Local.sUser.Set(V.Local.sRet(0))
+v.Local.sPass.Set(V.Local.sRet(1))
+v.Local.sSecTok.Set(V.Local.sRet(2))
+
+
+'Set Connection String
+F.Intrinsic.String.Build("Offline=False;Password={1};Security Token={2};User={0};Use Sandbox=False",v.Local.sUser,v.Local.sPass,v.Local.sSecTok,v.Local.sConString) 
+'Set Connection String 
+F.Automation.SalesForce.SetConnectionString(v.Local.sConString)
+
+Function.Intrinsic.Control.If(V.Caller.Hook,=,"14385") 
+	'create datatable
+	Function.Intrinsic.Control.CallSub(createdatatables) 
+	'Sync Customer 	
+	Function.Intrinsic.Control.CallSub(sync_customer)
+Function.Intrinsic.Control.EndIf
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Customer_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload) 	
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Sync_Customer.Start
+F.Intrinsic.Control.SetErrorHandler("Sync_Customer_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+v.Local.sSQL.Declare(String) 
+v.Local.sCustomer.Declare(StrinG) 
+v.Local.i.Declare(Long) 
+v.Local.sCustomer.Set(v.Passed.000002) 
+'check flag. 
+F.Intrinsic.Control.If(V.Caller.Switches,<>,"D") 
+	F.Intrinsic.UI.InvokeWaitDialog("Syncing with SalesForce...","GS-SalesForce Customer Sync")
+	'we know that we have a new customer so we have to create a New Record in Salesforce. 
+	'Get Customer Information Needed. 	
+	'here is where we can make some loops 
+	Function.Intrinsic.Control.CallSub(get_cust_info,"Customer",v.Local.sCustomer)
+'	Function.Intrinsic.Control.CallSub(get_crm_contacts,"Customer",v.Local.sCustomer)
+	Function.Intrinsic.Control.CallSub(sync_to_salesforce) 	
+	F.Intrinsic.UI.CloseWaitDialog
+Function.Intrinsic.Control.EndIf
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Sync_Customer_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Customer_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Sync_Customer.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+F.ODBC.Connection!conX.Close 
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.Exitsub
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Customer_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Unload.End
+
+Program.Sub.Get_Cust_Info.Start
+F.Intrinsic.Control.SetErrorHandler("Get_Cust_Info_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+v.Local.sSQL.Declare(String) 
+v.Local.sCustomer.Declare(String)
+v.Local.iRow.Declare(Long)
+v.Local.sCustomer.Set(v.Args.Customer)
+V.Local.iPercent.Declare(Long)
+F.Intrinsic.String.LPad(v.Local.sCustomer, "0", 6, v.Local.sCustomer)
+'Get Data From Customer_Master
+F.Intrinsic.String.Build("Select V_Customer_Master.Customer,V_Customer_Master.Attention,Name_Customer,Address1,Address2,V_Customer_INTL.Address3,V_Customer_Intl.Address4,V_Customer_INTL.Address5,City,State,Zip,Code_Area,Country,County,Flag_Credit_Hold,Telephone,Salesperson From V_Customer_Master Left Join V_Customer_INTL on V_Customer_master.Customer = V_Customer_INTL.Customer  Where Customer = '{0}'",v.Local.sCustomer,v.Local.sSQL) 
+'load into datatable. 
+'have to add rows manually. 
+F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+Function.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,=,False) 
+	Function.Data.DataTable.AddRow("Customer_Master","Customer",v.ODBC.conX!rst.FieldValTrim!Customer,"Name_Customer",v.ODBC.conX!rst.FieldValTrim!Name_Customer,"Address1",v.ODBC.conX!rst.FieldValTrim!Address1,"Address2",v.ODBC.conX!rst.FieldValTrim!Address2,"Address3",v.ODBC.conX!rst.FieldValTrim!Address3, "Address4",v.ODBC.conX!rst.FieldValTrim!address4,"Address5",v.ODBC.conX!rst.FieldValTrim!Address5,"City",v.ODBC.conX!rst.FieldValTrim!City,"State",v.ODBC.conX!rst.FieldValTrim!State,"ZIP",v.ODBC.conX!rst.FieldValTrim!Zip,"Code_Area",v.ODBC.conX!rst.FieldValTrim!Code_Area,"Country",v.ODBC.conX!rst.FieldValTrim!Country,"COUNTY",v.ODBC.conX!rst.FieldValTrim!County,"Flag_Credit_Hold",v.ODBC.conX!rst.fieldvaltrim!Flag_Credit_Hold,"Telephone",v.ODBC.conX!rst.FieldValTrim!Telephone,"Salesperson",v.ODBC.conX!rst.FieldValTrim!Salesperson,"Attention",v.ODBC.conX!rst.FieldValTrim!Attention)
+	v.Local.iRow.Set(v.datatable.Customer_Master.RowCount--) 	
+	f.Intrinsic.Control.Else 
+		'exit sub, if we couldn't find this customer. Houston, WE have a problem. 
+		F.Intrinsic.Control.ExitSub 		
+Function.Intrinsic.Control.EndIf
+f.ODBC.conX!rst.Close 
+'Get Salesperson Name based on their Code. 
+'F.Intrinsic.String.Build("Select Name From V_SalesPersons Where ID = '{0}'",v.data.datatable.Customer_Master(v.Local.iRow).SalesPerson!FieldValTrim,v.Local.sSQL) 
+'F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+'F.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,<>,True) 
+'	F.data.dataTable.SetValue("Customer_Master",v.Local.iRow,"SalesPerson",v.ODBC.conX!rst.FieldVal!Name) 
+'F.Intrinsic.Control.EndIf
+'F.ODBC.conX!rst.Close 
+'Get Data From Customer_Sales 
+'Date_New_Customer, Fax
+F.Intrinsic.String.Build("Select Date_New_Customer,Fax_NUMBER From V_Customer_Sales Where Customer = '{0}'",v.Local.sCustomer,v.Local.sSQL) 
+f.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+F.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,=,False) 
+	'add data. 
+	F.data.dataTable.SetValue("Customer_Master",v.Local.iRow,"Date_New_Customer",v.ODBC.conX!rst.FieldVal!Date_New_Customer,"Fax",v.ODBC.conX!rst.FieldValTrim!Fax_NUMBER) 	
+Function.Intrinsic.Control.EndIf
+F.ODBC.conX!rst.Close 
+'Get Discount From Customer_ShipTo > displayed as a percent in salesforce
+F.Intrinsic.String.Build("Select Discount From V_Customer_ShipTo Where Customer = '{0}'",v.Local.sCustomer,v.Local.sSQL) 
+F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+F.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,<>,True) 
+	F.Intrinsic.Math.Mult(V.ODBC.conX!rst.FieldVal!Discount, 100, V.Local.iPercent)
+	F.data.dataTable.SetValue("Customer_Master",v.Local.iRow,"Discount",V.Local.iPercent) 
+Function.Intrinsic.Control.EndIf
+F.ODBC.conX!rst.Close 
+'Get Shipping Hold Flag 
+F.Intrinsic.String.Build("Select Shp_Hld,Carrier_CD From V_CUST_FORM_INFO Where Customer = '{0}'",v.Local.sCustomer,v.Local.sSQL) 
+F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+F.Intrinsic.Control.If(v.ODBC.conx!rst.EOF,=,False) 
+	F.data.dataTable.SetValue("Customer_Master",v.Local.iRow,"Shipping_hold",v.ODBC.conX!rst.FieldVal!Shp_HLD,"Carrier_CD",v.ODBC.conX!rst.FieldValTrim!Carrier_Cd) 
+Function.Intrinsic.Control.EndIf
+f.ODBC.conX!rst.Close 
+'Get Customer Tax, Tax_Sales_Ex_NO 
+F.Intrinsic.String.Build("Select Tax_Sales_Ex_NO From V_CUSTOMER_TAX Where CUST = '{0}'",v.Local.sCustomer,v.Local.sSQL) 
+f.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+F.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,=,False) 
+	'add data. 
+	F.data.dataTable.SetValue("Customer_Master",v.Local.iRow,"Tax_Sales_Ex_No",v.ODBC.conX!rst.FieldValTrim!Tax_Sales_Ex_No) 	
+Function.Intrinsic.Control.EndIf
+F.ODBC.conX!rst.Close 
+'Get Price Class Disct.PriceClassDSCT 
+F.Intrinsic.String.Build("Select PRC_Class_Dsct From V_Price_Class_Dsct Where PRC_CUST = '{0}'",v.Local.sCustomer,v.Local.sSQL) 
+f.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+F.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,=,False) 
+	'add data. 
+	F.data.dataTable.SetValue("Customer_Master",v.Local.iRow,"Price_Class_Dsct",v.ODBC.conX!rst.FieldValTrim!PRC_CLASS_DSCT) 	
+Function.Intrinsic.Control.EndIf
+F.ODBC.conX!rst.Close 
+'Carrier_Code_Addr 
+F.Intrinsic.String.Build("Select Carrier_CD From V_Carrier_Code_Addr Where CUST_NO = '{0}'",v.Local.sCustomer,v.Local.sSQL) 
+f.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+F.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,=,False) 
+	f.Data.DataTable.SetValue("Customer_Master",v.Local.iRow,"Carrier_CD",v.ODBC.conX!rst.FieldValTrim!Carrier_CD) 
+Function.Intrinsic.Control.EndIf
+f.ODBC.conX!rst.Close 
+'get custom information 
+F.Intrinsic.String.Build("Select * From GCG_4132_Frght_Info where Customer = '{0}'",v.Local.sCustomer,v.Local.sSQL) 
+f.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+Function.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,=,False) 
+	F.Data.DataTable.SetValue("Customer_Master",v.Local.iRow,"UPS_ACCT_NO",v.ODBC.conX!rst.FieldValTrim!UPS_ACCT_NO) 
+	F.Data.DataTable.SetValue("Customer_Master",v.Local.iRow,"FEDEX_ACCT_NO",v.ODBC.conX!rst.FieldValTrim!FEDEX_ACCT_NO) 
+	F.Data.DataTable.SetValue("Customer_Master",v.Local.iRow,"THIRDPARTY_ACCT_NO",v.ODBC.conX!rst.FieldValTrim!THIRD_PARTY_FR_ACCT) 
+	'add for rebate
+	F.Data.DataTable.SetValue("Customer_Master",v.Local.iRow,"Rebate",v.ODBC.conX!rst.FieldValTrim!Rebate_Participant)
+Function.Intrinsic.Control.Else
+	'still need to set rebate, required data type  '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+	F.Data.DataTable.SetValue("Customer_Master",v.Local.iRow,"Rebate",False)	
+Function.Intrinsic.Control.EndIf
+f.ODBC.conX!rst.Close 
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Get_Cust_Info_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Customer_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)	
+Function.Intrinsic.Control.EndIf
+Program.Sub.Get_Cust_Info.End
+
+Program.Sub.CreateDataTables.Start
+F.Intrinsic.Control.SetErrorHandler("CreateDataTables_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+F.Data.DataTable.Create("Customer_Master",True) 
+'customer master datatable. 
+F.Data.DataTable.AddColumn("Customer_Master","Customer",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Name_Customer",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Address1",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Address2",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Address3",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Address4",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Address5",String) 
+F.Data.DataTable.AddColumn("Customer_Master","City",String) 
+F.Data.DataTable.AddColumn("Customer_Master","State",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Zip",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Discount",Float) 
+F.Data.DataTable.AddColumn("Customer_Master","Code_Area",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Country",String) 
+F.Data.DataTable.AddColumn("Customer_Master","County",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Attention",String)
+F.Data.DataTable.AddColumn("Customer_Master","Salesperson",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Carrier_CD",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Flag_Credit_Hold",String)
+F.Data.DataTable.AddColumn("Customer_Master","Shipping_Hold",String)
+F.Data.DataTable.AddColumn("Customer_Master","Price_Class_Dsct",Float) 
+F.Data.DataTable.AddColumn("Customer_Master","Date_New_Customer",Date)
+F.Data.DataTable.AddColumn("Customer_Master","Fax",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Telephone",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Tax_Sales_Ex_No",String) 
+F.Data.DataTable.AddColumn("Customer_Master","UPS_ACCT_NO",String) 
+F.Data.DataTable.AddColumn("Customer_Master","FEDEX_ACCT_NO",String) 
+F.Data.DataTable.AddColumn("Customer_Master","THIRDPARTY_ACCT_NO",String) 
+F.Data.DataTable.AddColumn("Customer_Master","Rebate", String)
+''Contact DataTable. 
+'F.Data.DataTable.Create("Contact",True) 
+'F.Data.DataTable.AddColumn("Contact","Customer",String) 
+'F.Data.DataTable.AddColumn("Contact","Alt_Id",String) 
+'F.Data.DataTable.AddColumn("Contact","Name",String) 
+'F.Data.DataTable.AddColumn("Contact","Name_First",String) 
+'F.Data.DataTable.AddColumn("Contact","Name_Last",String) 
+'F.Data.DataTable.AddColumn("Contact","Title",String) 
+'F.Data.DataTable.AddColumn("Contact","Phone1",String)
+'F.Data.DataTable.AddColumn("Contact","Email1",String) 
+''add relation based on customer 
+'F.Data.DataTable.AddRelation("Customer_Master","Customer","Contact","CUSOTMER") 
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("CreateDataTables_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Customer_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)	
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.CreateDataTables.End
+
+Program.Sub.Get_CRM_Contacts.Start
+F.Intrinsic.Control.SetErrorHandler("Get_CRM_Contacts_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+v.Local.sCustomer.Declare(String) 
+v.Local.sSQL.Declare(STring) 
+v.Local.sCustomer.Set(v.Args.Customer) 
+'This sub will pull any created CRM Contacts and grab them to be stored into Salesforces' Contact table. 
+F.Intrinsic.String.Build("Select Cust,Alt_ID,Name,Name_First,Name_Last,Phone1,Email1,Title From V_Contact Where CUST = '{0}' And TYPE = 'C'",v.Local.sCustomer,v.Local.sSQL) 
+f.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+F.Intrinsic.Control.DoUntil(v.ODBC.conX!rst.EOF,=,True) 
+	F.Data.DataTable.AddRow("Contact","Customer",v.ODBC.conX!rst.FieldValTrim!Cust,"Alt_ID",v.ODBC.conX!rst.FieldValTrim!Alt_ID,"Name",v.ODBC.conX!rst.FieldValTrim!Name,"Name_First",v.ODBC.conX!rst.FieldValTrim!Name_First,"Name_Last",v.ODBC.conX!rst.FieldValTrim!Name_Last,"Phone1",v.ODBC.conX!rst.FieldValTrim!Phone1,"Email1",v.ODBC.conX!rst.FieldValTrim!Email1,"Title",v.ODBC.conX!rst.FieldValTrim!Title) 
+	f.ODBC.conX!rst.MoveNext
+F.Intrinsic.Control.Loop
+F.ODBC.conX!rst.Close 
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Get_CRM_Contacts_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Customer_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Get_CRM_Contacts.End
+
+Program.Sub.Sync_To_Salesforce.Start
+F.Intrinsic.Control.SetErrorHandler("Sync_To_Salesforce_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+v.Local.sSQL.Declare(String) 
+v.Local.iC.Declare(Long) 
+v.Local.sID.Declare(String) 
+v.Local.sBillingStreet.Declare(String)
+v.Local.sT.Declare(String) 
+v.Local.sRet.Declare(String) 
+v.Local.iR.Declare(long) 
+v.Local.sFilter.Declare(String) 
+v.Local.sContactRet.Declare(STring) 
+v.Local.sContactID.Declare(String) 
+'Go Through salesForce and Select to Datatable with a where based on customer id from global links to Account.Custom2_C
+'loop through customer_master datatable. 
+F.Intrinsic.Control.For(v.Local.iC,0,v.dataTable.Customer_Master.RowCount--,1) 
+	F.Intrinsic.String.Build("Select ID, Custom2__c From Account Where Custom2__C = '{0}'",v.DataTable.Customer_Master(v.Local.iC).Customer.FieldValTrim,v.Local.sSQL) 
+	'select to datatable. 
+	F.Automation.SalesForce.SelectToDataTable("SF_ID",True,v.Local.sSQL) 
+	F.Intrinsic.Control.If(v.DataTable.SF_ID.RowCount,>,0)  
+		'Means this record already exists in SF so we don't have to add it, but we want that id. 
+		'always assume it's 1
+		V.Local.sID.Set(v.DataTable.SF_ID(0).ID!FieldValTrim) 		
+	Function.Intrinsic.Control.Else 
+		'means it doesn't exist in salesforce. 
+		'we got to execute and return ID. 
+		'create new one. 
+		F.Intrinsic.String.Build("Insert Into Account (Name,Custom2__C) Values ('{0}','{1}')",v.dataTable.Customer_Master(v.Local.iC).Name_Customer.FieldValTrim,v.dataTable.Customer_Master(v.Local.iC).Customer!FieldValTrim,v.Local.sSQL) 
+		F.Automation.SalesForce.ExecuteSQLREturnID(v.Local.sSQL,v.Local.sID) 
+	Function.Intrinsic.Control.EndIf 
+	''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+	'build address from 1 through 5.''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''' '
+	F.Intrinsic.String.Build("{1}{0}{2}{0}{3}",v.Ambient.NewLine,v.dataTable.Customer_Master(v.Local.iC).Address1.Fieldvaltrim, v.dataTable.Customer_Master(v.Local.iC).Address2.Fieldvaltrim, v.dataTable.Customer_Master(v.Local.iC).Address3.Fieldvaltrim,v.Local.sBillingStreet)	
+	'Credit Hold is either 1 or 0 
+	F.Intrinsic.Control.iF(v.dataTable.Customer_Master(v.Local.iC).Flag_Credit_Hold!FieldValtrim,=,"Y") 
+		F.Data.DataTable.SetValue("Customer_Master",v.Local.iC,"Flag_Credit_Hold","1") 
+	Function.Intrinsic.Control.Else 
+		F.Data.DataTable.SetValue("Customer_Master",v.Local.iC,"Flag_Credit_Hold","0") 
+	Function.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.If(v.datatable.Customer_Master(v.Local.iC).Shipping_Hold!FieldValtrim,=,"Y") 
+		F.Data.DataTable.SetValue("Customer_Master",v.Local.iC,"Shipping_Hold","1") 
+	Function.Intrinsic.Control.Else 
+		F.Data.DataTable.SetValue("Customer_Master",v.Local.iC,"Shipping_Hold","0") 
+	Function.Intrinsic.Control.EndIf 
+	'have to update Country and State with actual values from tables. 
+	v.Local.sT.Set(v.datatable.customer_master(v.Local.iC).State!fieldvaltrim) 
+	'Country 
+	v.Local.sT.Set(v.datatable.customer_master(v.Local.iC).Country!FieldValTrim) 
+	F.Intrinsic.String.Build("Select Country From V_COUNTRY_CODES WHERE uCase(Code) = '{0}'",v.Local.sT.UCase,v.Local.sSQL) 
+	F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+	F.Intrinsic.Control.If(v.ODBC.conX!rst.eof,=,False) 
+		F.Data.DataTable.SetValue("Customer_Master",v.Local.iC,"Country",v.ODBC.conX!rst.FieldValTrim!Country) 
+	Function.Intrinsic.Control.Else 
+		f.Intrinsic.Control.If(v.Local.sT.UCase,=,"USA") 
+			F.Data.DataTable.SetValue("Customer_Master",v.Local.iC,"Country","United States") 
+		Function.Intrinsic.Control.EndIf
+	Function.Intrinsic.Control.EndIf
+	f.ODBC.conX!rst.Close 
+	'we can't have a state code and no country code. 	
+	'have to update Country and State with actual values from tables. 
+	v.Local.sT.Set(v.datatable.customer_master(v.Local.iC).State!fieldvaltrim) 
+	F.Intrinsic.Control.If(v.datatable.customer_Master(v.Local.iC).Country!fieldvaltrim,<>,"") 
+		F.Intrinsic.String.Build("Select State From V_State_Codes Where UCase(Code) = '{0}'",v.Local.sT.UCase,v.Local.sSQL) 
+		F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+		Function.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,=,False) 
+			F.Data.DataTable.SetValue("Customer_Master",v.Local.iC,"State",v.ODBC.conX!rst.FieldValTrim!State) 
+		Function.Intrinsic.Control.Else 
+			F.Data.DataTable.SetValue("Customer_Master",v.Local.iC,"State","") 
+		Function.Intrinsic.Control.EndIf
+		f.ODBC.conX!rst.Close 
+	Function.Intrinsic.Control.Else 
+		F.Data.DataTable.SetValue("Customer_Master",v.Local.iC,"State","") 
+	Function.Intrinsic.Control.EndIf	
+'	V.Local.sSQL.Set("Update Account (Custom2__C,Name,BillingStreet,BillingCity,BillingState,BillingPostalCode,Area_Code_C,BillingCountry,Carrier_Code__C,County__C,Credit_Hold__C,Customer_Discount__C,Customer_Inception_Date,Fax,Phone,TaxNumber__C,GS_Salesperson__C)") 
+'	F.Intrinsic.String.Build("{0} Values ('{1}','{2}','{3}','{4}','{5}','{6}','{7}','{8}','{9}','{10}','{11}','{12}','{13}','{14}','{15}','{16}','{17}')",v.Local.sSQL,v.DataTable.Customer_Master(v.Local.iC).Customer!FieldvalTrim,
+	F.Intrinsic.String.Build("Update Account Set Name = '{0}', BillingStreet = '{1}', BillingState = '{2}', BillingPostalCode = '{3}',Area_Code__C = '{4}',BillingCountry = '{5}',BillingCity = '{6}',UPS_ACCOUNT_NUMBER__C = '{7}',FEDEX_ACCOUNT_NUMBER__C = '{8}',Third_Party_Freight__C = '{9}',Hold__C = '{10}',Customer_Discount__C = '{11}', Rebate_Participant__c = '{12}'",v.DataTable.Customer_Master(v.Local.iC).Name_Customer!FieldValTrim,v.Local.sBillingStreet,v.dataTable.Customer_Master(v.Local.iC).State!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).Zip!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).Code_Area!FieldValTrim,v.datatable.customer_master(v.Local.iC).Country!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).City!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).UPS_ACCT_NO!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).FedEx_ACCT_NO!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).THIRDPARTY_ACCT_NO!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).Shipping_Hold!FieldValTrim,v.datatable.customer_Master(v.Local.iC).Discount!FieldValTrim,v.datatable.customer_Master(v.Local.iC).Rebate!FieldValTrim,v.Local.sSQL) 
+	F.Intrinsic.String.Build("{0}, Carrier_Code__C = '{1}',County__C = '{2}',Credit_Hold__C ='{3}',Customer_Inception_Date__C = '{5}',Fax = '{6}', Phone = '{7}',TaxNumber__C = '{8}', GS_SALESPERSON__C = '{9}' Where ID = '{10}'",v.Local.sSQL,v.DataTable.Customer_Master(v.Local.iC).Carrier_CD!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).County!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).Flag_Credit_Hold!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).Price_Class_Dsct!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).Date_New_Customer!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).Fax!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).Telephone!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).Tax_Sales_Ex_No!FieldValTrim,v.DataTable.Customer_Master(v.Local.iC).Salesperson!FieldValTrim,v.Local.sID,v.Local.sSQL) 
+	F.Automation.SalesForce.ExecuteSQL(v.Local.sSQL) 
+'	'Account and Customer Contacts now. 
+'	'have to do a select
+'	F.Intrinsic.String.Build("Customer='{0}'",v.datatable.customer_master(v.Local.iC).Customer!FieldValTrim,v.Local.sFilter) 
+'	 'Select All Contacts from SalesForce into New DataTable. 
+'	'ID from Acccount being linked to Contact.AccountID 
+'	F.Intrinsic.String.Build("Select ID,AccountID,Legacy_FMP_ID__C From Contact Where AccountID = '{0}'",v.Local.sID,v.Local.sSQL) 
+'	F.Automation.SalesForce.SelectToDataTable("SF_Contact",True,v.Local.sSQL) 
+'	F.Data.DataTable.Select("Contact",v.Local.sFilter,v.Local.sRet) 
+'	f.Intrinsic.Control.If(v.Local.sRet.Trim,<>,"***NORETURN***") 
+'		F.Intrinsic.String.Split(v.Local.sRet,"*!*",v.Local.sRet) 
+'		F.Intrinsic.Control.For(v.Local.iR,0,v.Local.sRet.UBound,1) 
+'			F.Intrinsic.String.Build("Legacy_FMP_ID__C='{0}'",v.DataTable.Contact(v.Local.sRet(v.Local.iR)).Alt_ID!FieldValTrim,v.Local.sFilter) 
+'			F.Data.DataTable.Select("SF_Contact",v.Local.sFilter,v.Local.sContactRet) 
+'			F.Intrinsic.Control.If(v.Local.sContactRet.Trim,<>,"***NORETURN***")
+'				F.Intrinsic.String.Split(v.Local.sContactRet,"*!*",v.Local.sContactRet) 
+'				'should only be 1 returned to us. 
+'				'set our contact ID from the returned 
+'				v.Local.sContactID.Set(v.datatable.SF_Contact(v.Local.scontactret(0)).ID!FieldValTrim) 
+'				F.Intrinsic.String.Build("Update Contact Set AccountID = '{0}', Legacy_FMP_ID__c = '{1}',LastName ='{3}',FirstName = '{4}',Title = '{5}',Phone = '{6}',Email = '{7}' Where ID = '{8}'",v.Local.sID,v.DataTable.Contact(v.local.sRet(v.local.iR)).Alt_ID!FieldValTrim,v.DataTable.Contact(v.local.sRet(v.local.iR)).Name!FielDValTrim,v.DataTable.Contact(v.local.sRet(v.local.iR)).Name_Last!FieldValTrim,v.datatable.Contact(v.local.sRet(v.local.iR)).Name_First!FieldValTrim,v.datatable.Contact(v.local.sRet(v.local.iR)).Title!FieldValTrim,v.datatable.Contact(v.local.sRet(v.local.iR)).Phone1!FieldvalTrim,v.datatable.Contact(v.local.sRet(v.local.iR)).Email1!FieldValTrim,v.Local.sContactID,v.Local.sSQL) 	
+'			Function.Intrinsic.Control.Else 
+'				F.Intrinsic.String.Build("Insert Into Contact (AccountID,Legacy_FMP_ID__c,Name,LastName,FirstName,Title,Phone,Email) Values('{0}','{1}','{2}','{3}','{4}','{5}','{6}','{7}')",v.Local.sID,v.DataTable.Contact(v.local.sRet(v.local.iR)).Alt_ID!FieldValTrim,v.DataTable.Contact(v.local.sRet(v.local.iR)).Name!FielDValTrim,v.DataTable.Contact(v.local.sRet(v.local.iR)).Name_Last!FieldValTrim,v.datatable.Contact(v.local.sRet(v.local.iR)).Name_First!FieldValTrim,v.datatable.Contact(v.local.sRet(v.local.iR)).Title!FieldValTrim,v.datatable.Contact(v.local.sRet(v.local.iR)).Phone1!FieldvalTrim,v.datatable.Contact(v.local.sRet(v.local.iR)).Email1!FieldValTrim,v.Local.sSQL) 	
+'			F.Intrinsic.Control.EndIf		
+'			Function.Automation.SalesForce.ExecuteSQL(v.Local.sSQL) 
+'		F.Intrinsic.Control.Next(v.Local.iR)			
+'	Function.Intrinsic.Control.EndIf
+	'we are going to hit it each loop	
+	F.Data.Datatable.Close("SF_ID") 
+'	'we are only keeping for this customers contacts only.
+'	F.Data.DataTable.Close("SF_CONTACT") 
+F.Intrinsic.Control.Next(v.Local.iC) 
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Sync_To_Salesforce_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Customer_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	Function.Intrinsic.UI.Msgbox(v.Local.sError) 
+	F.Intrinsic.Control.CallSub(unload) 	
+Function.Intrinsic.Control.EndIf
+Program.Sub.Sync_To_Salesforce.End
+
+Program.Sub.Comments.Start
+${$0$}$GCG_SalesForce_Customer_Sync$}$TRT$}$9/6/2016 2:15:57 PM$}$False
+${$1$}$$}$$}$0$}$14385$}$$}$9/13/2016 7:48:39 AM$}$Customer Post Save hook
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$Project 4132
+
+Customer Sync with GlobalShop and Salesforce. 
+
+'coder TRT
+
+9/6/16
+
+
+also no whitespace cuase it makes run faster and code eidotr work better. sucks for us. don't be mad at me.
+Program.Sub.Comments.End
