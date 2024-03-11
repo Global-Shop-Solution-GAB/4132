@@ -1,0 +1,137 @@
+Program.Sub.ScreenSU.Start
+Gui.Form..Create
+Gui.Form..Caption("Credentials")
+Gui.Form..Size(4335,3060)
+Gui.Form..MinX(0)
+Gui.Form..MinY(0)
+Gui.Form..Position(0,0)
+Gui.Form..BackColor(-2147483633)
+Gui.Form..MousePointer(0)
+Gui.Form..Event(UnLoad,Form_UnLoad)
+Gui.Form.lbl1.Create(Label,"User",True,570,255,0,45,90,True,0,"Arial",8,-2147483633,0)
+Gui.Form.txtUser.Create(TextBox,"",True,4020,300,0,30,255,True,0,"Arial",8,-2147483643,1)
+Gui.Form.cmdSave.Create(Button)
+Gui.Form.cmdSave.Size(855,375)
+Gui.Form.cmdSave.Position(3060,1965)
+Gui.Form.cmdSave.Caption("Save")
+Gui.Form.cmdSave.Event(Click,cmdSave_Click)
+Gui.Form.lbl2.Create(Label,"Password",True,975,255,0,60,660,True,0,"Arial",8,-2147483633,0)
+Gui.Form.txtPassword.Create(TextBox,"",True,3990,300,0,45,885,True,0,"Arial",8,-2147483643,1)
+Gui.Form.lbl3.Create(Label,"Security Token",True,1395,255,0,75,1335,True,0,"Arial",8,-2147483633,0)
+Gui.Form.txtSecTok.Create(TextBox,"",True,3990,300,0,45,1560,True,0,"Arial",8,-2147483643,1)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'created for the login to SalesForce
+'this script will allow the user to change login credentals
+
+V.Local..BulkDeclareString(ssql, sRet, sRead)
+
+F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+F.ODBC.Connection!con.ExecuteAndReturn("Select * From GCG_4132_CONNECTION Where NUM = '1'", V.Local.sRet)
+Function.Intrinsic.Control.If(V.Local.sRet, =, "")
+	'then this is the first time- add a row to the table setting Num = 1
+	F.ODBC.Connection!con.Execute("Insert Into GCG_4132_CONNECTION (NUM) Values (1)")
+Function.Intrinsic.Control.Else
+	'populate text boxes with current values
+	F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+	GUI.Form.txtUser.Text(V.Local.sRet(1))
+	Gui.Form.txtPassword.Text(V.Local.sRet(2))
+	GUI.Form.txtSecTok.Text(V.Local.sRet(3))
+Function.Intrinsic.Control.EndIf
+
+GUI.Form.txtUser.Text("bailey.rudd@quickmountpv.com")
+Gui.Form.txtPassword.Text("rigu@rd0")
+GUI.Form.txtSecTok.Text("d4FKSBpf4gqSINSjn68lWAYi")
+
+
+GUI.Form..Show
+
+''''v.Local.sUser.Set("bailey.rudd@quickmountpv.com")
+''''v.Local.sPass.Set("rigu@rd0")
+''''v.Local.sSecTok.Set("d4FKSBpf4gqSINSjn68lWAYi")
+
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Connection.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Form_UnLoad.Start
+F.Intrinsic.Control.SetErrorHandler("cmdSave_Click_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+GUI.Form..Visible(False)
+F.ODBC.Connection!Con.Close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmdSave_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Connection.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.Form_UnLoad.End
+
+Program.Sub.cmdSave_Click.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(ssql, sUser, sPass, sSecTok, sConString)
+GUI.Form..Visible(False)
+V.Local.sUser.Set(V.Screen.Form!txtUser.Text)
+V.Local.sPass.Set(V.Screen.Form!txtPassword.Text)
+V.Local.sSecTok.Set(V.Screen.Form!txtSecTok.Text)
+F.Intrinsic.String.Build("UPDATE GCG_4132_CONNECTION Set USER_NAME = '{0}', PASS = '{1}', SECTOK = '{2}' Where NUM = '1'",V.Local.sUser,V.Local.sPass ,V.Local.sSecTok, V.Local.ssql)
+F.ODBC.Connection!con.Execute(V.Local.ssql)
+'Set Connection String
+F.Intrinsic.String.Build("Offline=False;Password={1};Security Token={2};User={0};Use Sandbox=True",v.Local.sUser,v.Local.sPass,v.Local.sSecTok,v.Local.sConString) 
+F.Automation.SalesForce.SetConnectionString(v.Local.sConString)
+Function.Intrinsic.Control.CallSub(check)
+F.Intrinsic.Control.CallSub(form_unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Connection.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(form_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdSave_Click.End
+
+Program.Sub.check.Start
+
+F.Intrinsic.Debug.InvokeDebugger
+
+F.Intrinsic.Debug.Stop
+V.Local.sSql.Declare(String)
+V.Local.sSql.Set("Select 'O' as Type, RIGHT(Order.OrderNumber,7) as OrderNO,ORDER.Attention__c ,'' as UPS_Acct_No, '' as FedEX_Acct_No, '' as Third_Party_Fr_Acct,ORDER.Carrier_Account__c as CARRIER_ACCT,ORDER.Ship_Method__c as ShipMethod,Order.No_Backorders__c as NoBackorders ,Order.Special_Shipping_Inst__c as ShipInst,Order.Revision_Number__c as REV, Order.Required_Ship_Date__c as DueDate,Order.Purchaser_Name__c as ContactName,Order.Purchaser_Email__c as ContactEmail,Order.Purchaser_Phone__c as ContactPhone,'' as ExistsInDb,Account.Custom2__c as Customer, Order.PoNumber__c as PO,Order.EffectiveDate As OrderDate,Order.Ship_To__c as ShipTo,Order.ShippingStreet,Order.ShippingCity,Order.ShippingStateCode as ShippingState, Order.ShippingPostalCode, Order.ShippingCountry,Order.GS_Salesperson__C As Salesman From 'ORDER', Account Where Order.AccountId = Account.Id AND ORDER.STATUS = 'Activated' AND ORDER.Locked__c = 'FALSE'")
+Function.Automation.SalesForce.SelectToDataTable("Table_A", True, V.Local.sSql)
+
+
+Program.Sub.check.End
+
+Program.Sub.Comments.Start
+${$0$}$GCG_4132_TEST_CON$}$DH1$}$4/13/2017 11:36:38 AM$}$True
+Program.Sub.Comments.End
