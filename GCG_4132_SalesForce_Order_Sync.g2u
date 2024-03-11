@@ -1,0 +1,777 @@
+Program.Sub.Preflight.Start
+Program.External.Include.Library("ORDUPL.lib")
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+'Originally coded by Dawn 
+'Tyler got to take it over. yay me....
+V.Local.sError.Declare(String)
+
+v.Local.sUser.Declare(STring) 
+v.Local.sPass.Declare(String) 
+v.Local.sSecTok.Declare(STring) 
+v.Local.sConString.Declare(String) 
+V.Local.iNum.Declare(Long)
+V.Local.sSql.Declare(String)
+V.Local.sStr.Declare(String)
+V.Local.sRow.Declare(String)
+V.Local.iAlignment.Declare(Long)
+V.Local.iLength.Declare(Long)
+V.Local.iUBound.Declare(Long)
+V.Local.sRet.Declare(String)
+V.Local.sLine.Declare(String)
+V.Local.sFile.Declare(String)
+V.Local.sPart.Declare(String)
+V.Local.sFilePath.Declare(String)
+V.Local.sParams.Declare(String)
+V.Local.sRowLines.Declare(String)
+V.Local.iUBoundLines.Declare(Long)
+V.Local.iLines.Declare(Long)
+V.Local.sLineLine.Declare(String)
+v.Local.sCWRet.Declare(STring) 
+v.Local.sOrderLine.Declare(string) 
+v.Local.iOL.Declare(Long) 
+V.Local.sFilter.Declare(String)
+V.Local.sFilter2.Declare(String)
+
+F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass, 1000000000)
+'check dirs first- the file to check isRunning must exist
+Function.Intrinsic.Control.CallSub(check_dir)
+
+'For Online update: Check if the program is running.
+Function.Intrinsic.Control.CallSub(isrunning)
+
+'get Connection string
+F.ODBC.Connection!con.ExecuteAndReturn("Select rTrim(USER_NAME), rTrim(PASS), rTrim(SECTOK) From GCG_4132_CONNECTION Where NUM = '1'", V.Local.sRet)
+F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+
+v.Local.sUser.Set(V.Local.sRet(0))
+v.Local.sPass.Set(V.Local.sRet(1))
+v.Local.sSecTok.Set(V.Local.sRet(2))
+
+'Set Connection String
+F.Intrinsic.String.Build("Offline=False;Password={1};Security Token={2};User={0};Use Sandbox=False",v.Local.sUser,v.Local.sPass,v.Local.sSecTok,v.Local.sConString) 
+
+
+'Set Connection String 
+F.Automation.SalesForce.SetConnectionString(v.Local.sConString)
+'check dirs
+Function.Intrinsic.Control.CallSub(check_dir)
+
+'first delete the ones that have a revision > current
+Function.Intrinsic.Control.CallSub(removefromdb)
+'this must be called first, the rest may be in any order '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+V.Local.sSql.Set("Select 'O' as Type, RIGHT([Order].OrderNumber,7) as OrderNO,[Order].Attention__c ,'' as UPS_Acct_No, '' as FedEX_Acct_No, '' as Third_Party_Fr_Acct,[Order].Carrier_Account__c as CARRIER_ACCT,[Order].Ship_Method__c as ShipMethod,[Order].No_Backorders__c as NoBackorders ,[Order].Special_Shipping_Inst__c as ShipInst,[Order].Revision_Number__c as REV, [Order].Required_Ship_Date__c as DueDate,[Order].Purchaser_Name__c as ContactName,[Order].Purchaser_Email__c as ContactEmail,[Order].Purchaser_Phone__c as ContactPhone,'' as ExistsInDb,Account.Custom2__c as Customer, [Order].PoNumber__c as PO,[Order].EffectiveDate As OrderDate,[Order].Ship_To__c as ShipTo,[Order].ShippingStreet,[Order].ShippingCity,[Order].ShippingStateCode as ShippingState, [Order].ShippingPostalCode, [Order].ShippingCountry,[Order].GS_Salesperson__C As Salesman From [ORDER], Account Where [Order].AccountId = Account.Id AND [Order].STATUS = 'Activated' AND [Order].Locked__c = 'FALSE'")
+Function.Automation.SalesForce.SelectToDataTable("Table_A", True, V.Local.sSql)
+f.Data.DataTable.SetPK("Table_A","OrderNO")
+
+'add frgt_info based on customer
+F.Data.Dictionary.CreateFromSQL("Check", "con","Select Customer, UPS_Acct_No From GCG_4132_Frght_Info")
+Function.Data.Dictionary.SetDefaultReturn("Check", "None")
+Function.Data.DataTable.FillFromDictionary("Table_A", "Check", "Customer", "UPS_Acct_No")
+F.Data.Dictionary.Close("Check")
+F.Data.Dictionary.CreateFromSQL("Check", "con","Select Customer,FedEX_Acct_No From GCG_4132_Frght_Info")
+Function.Data.Dictionary.SetDefaultReturn("Check", "None")
+Function.Data.DataTable.FillFromDictionary("Table_A", "Check", "Customer", "FedEX_Acct_No")
+F.Data.Dictionary.Close("Check")
+F.Data.Dictionary.CreateFromSQL("Check", "con","Select Customer, Third_Party_Fr_Acct From GCG_4132_Frght_Info")
+Function.Data.Dictionary.SetDefaultReturn("Check", "None")
+Function.Data.DataTable.FillFromDictionary("Table_A", "Check", "Customer", "Third_Party_Fr_Acct")
+F.Data.Dictionary.Close("Check")
+
+
+'Find all orders which have already been uploaded- create filter for view based on ExistsInDb = F.
+
+
+
+F.Data.Dictionary.CreateFromSQL("Check", "con","Select Distinct ORDER_NO as OrderNO, 'T' as ExistsInDb From V_ORDER_HEADER")
+Function.Data.Dictionary.SetDefaultReturn("Check", "F")
+Function.Data.DataTable.FillFromDictionary("Table_A", "Check", "OrderNO", "ExistsInDb")
+
+f.Data.DataTable.AddColumn("Table_A", "Check2", "String")
+F.Data.Dictionary.CreateFromSQL("Check2", "con","Select Distinct ORDER_NO as OrderNO, 'T' as Check2 From V_ORDER_HIST_HEAD")
+Function.Data.Dictionary.SetDefaultReturn("Check2", "F")
+Function.Data.DataTable.FillFromDictionary("Table_A", "Check2", "OrderNO", "Check2")
+
+
+
+
+V.Local.sFilter.Set("ExistsInDb = 'F' And Check2 = 'F'")
+'V.Local.sFilter2.Set("Check2 = 'F'")
+Function.Data.DataView.Create("Table_A", "View_A")
+
+Function.Data.DataView.SetFilter("Table_A", "View_A", V.Local.sFilter)
+'Function.Data.DataView.SetFilter("Table_A", "View_A", V.Local.sFilter2)
+
+V.Local.sSql.Set("Select OrderItem.Id, RIGHT([Order].OrderNumber,7) as ORDERNO, 'L' as Record_Type,OrderItem.Requested_Ship_Date__c , OrderItem.Quantity,OrderItem.Description ,OrderItem.UnitPrice,OrderItem.Quantity, '' as ProductCode,'' as Location,Orderitem.ListPrice From [ORDER] Left Join OrderItem ON [Order].Id = OrderItem.OrderId Left Join PricebookEntry ON OrderItem.PricebookEntryId=PricebookEntry.Id WHERE [Order].STATUS = 'Activated'")
+Function.Automation.SalesForce.SelectToDataTable("Table_L", True, V.Local.sSql)	
+	
+'create another datatable to fill from dictionary
+V.Local.sSql.Set("Select OrderItem.Id , Product2.ProductCode,Product2.GSS_Location__c As Location From  OrderItem, PricebookEntry, Product2 Where OrderItem.PricebookEntryId=PricebookEntry.Id And PricebookEntry.Product2Id=Product2.Id ")
+Function.Automation.SalesForce.SelectToDataTable("Table_M", True, V.Local.sSql)
+Function.Data.Dictionary.CreateFromDataTable("PART", "Table_M", "Id", "ProductCode",0,True)
+Function.Data.Dictionary.CreateFromDataTable("Location", "Table_M", "Id", "Location",0,True)
+'Add it to the table
+Function.Data.DataTable.FillFromDictionary("Table_L", "PART", "Id", "ProductCode")
+Function.Data.DataTable.FillFromDictionary("Table_L", "Location", "Id", "Location")
+'drop first column from datatable
+'Function.Data.DataTable.RemoveColumn("Table_L", "Id")
+
+Function.Data.DataView.Create("Table_L", "View_L")
+
+Function.Intrinsic.Control.CallSub(buildfile) 
+'Function.Intrinsic.Control.CallSub(Upload)
+Function.Intrinsic.Control.CallSub(unload)
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Order_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+V.Local.sError.Declare(String)
+
+V.Local.sFile.Declare(String)
+
+'path where file exists
+F.Intrinsic.String.Build("{0}\\WEb_ORDERS\IS_RUNNING\Running_{1}.txt",V.Caller.FilesDir,"Y",V.Local.sFile)
+
+'delete file for the next run
+Function.Intrinsic.File.DeleteFile(V.Local.sFile)
+'close connection
+Function.ODBC.Connection!con.Close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Order_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Unload.End
+
+Program.Sub.BuildFile.Start
+F.Intrinsic.Control.SetErrorHandler("BuildFile_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.sHeader.Declare(String)
+v.Local.sLine.Declare(String)
+v.Local.sPath.Declare(String)
+v.Local.iR.Declare(long)
+v.Local.iC.Declare(long)
+v.Local.sRet.Declare(String)
+v.Local.sFilter.Declare(String)
+v.Local.iRowCount.Declare(Long)
+v.Local.sQty.Declare(String) 
+v.Local.sPart.Declare(String)
+v.Local.sFull.Declare(String)
+v.Local.sOrderDate.Declare(String)
+v.Local.sSalesman.Declare(String)
+v.Local.sLoc.Declare(string)
+v.Local.sCustomer.Declare(String)
+v.Local.sOrderNo.Declare(String)
+V.Local.sShipName.Declare(String)
+V.Local.sShipStreet.Declare(STRING)
+V.Local.sShipCity.Declare(String)
+V.Local.sShipState.Declare(String)
+V.Local.sShipZip.Declare(String)
+V.Local.sPO.Declare(String)
+V.Local.sContactName.Declare(String)
+V.Local.sContactPhone.Declare(string)
+V.Local.sContactEmail.Declare(String)
+V.Local.sContactLine.Declare(String)
+V.Local.sDescription.Declare(String)
+V.Local.sUnitPrice.Declare(String)
+V.Local.iUBound.Declare(Long)
+V.Local.sDueDate.Declare(String)
+V.Local.sPayment.Declare(String)
+V.Local.sShipInst.Declare(String)
+V.Local.sShipInstLine.Declare(String)
+V.Local.sShipInst30.Declare(String)
+V.Local.sAttn.Declare(String)
+V.Local.sShipStreet1.Declare(String)
+V.Local.sShipStreet2.Declare(String)
+V.Local.sReqShip.Declare(String)
+V.Local.sRequiredShip.Declare(String)
+V.Local.iCount.Declare(Long)
+V.Local.sTempText.Declare(String)
+V.Local.bExist.Declare(Boolean)
+V.Local.iOrd.Declare(Long)
+V.Local.sTempColumn.Declare(String)
+
+'go through each View_A views line. 
+'then go through each View_L selecting on order number 
+'combine into upload line. 
+
+'create datatables to upload description and ship_via> these are set to upload here, but it fails to transfer
+F.Data.DataTable.Create("Desc", TRUE)
+F.Data.DataTable.AddColumn("Desc", "ORDER_NO","STRING","") 
+F.Data.DataTable.AddColumn("Desc", "PART","STRING","")
+F.Data.DataTable.AddColumn("Desc", "Description","STRING","")  
+ 
+F.Data.DataTable.Create("ShipVia", TRUE)
+F.Data.DataTable.AddColumn("ShipVia","ORDER_NO","STRING","") 
+F.Data.DataTable.AddColumn("ShipVia","RECORD_NO","STRING","") 
+F.Data.DataTable.AddColumn("ShipVia","SHIP_VIA","STRING","") 
+
+F.Data.DataTable.Create("Back", TRUE)
+F.Data.DataTable.AddColumn("Back", "ORDER_NO","STRING","") 
+F.Data.DataTable.AddColumn("Back", "RECORD_NO","STRING","")
+F.Data.DataTable.AddColumn("Back", "NoBackorders","STRING","") 
+
+F.Data.DataTable.Create("CarrierAcct", TRUE)
+F.Data.DataTable.AddColumn("CarrierAcct", "ORDER_NO","STRING","") 
+F.Data.DataTable.AddColumn("CarrierAcct", "RECORD_NO","STRING","") 
+F.Data.DataTable.AddColumn("CarrierAcct", "AcctNo","STRING","") 
+
+F.Data.DataTable.Create("PromiseDate", TRUE)
+F.Data.DataTable.AddColumn("PromiseDate", "ORDER_NO","STRING","") 
+
+F.Data.DataTable.Create("ListPrice", TRUE)
+F.Data.DataTable.AddColumn("ListPrice", "ORDER_NO","STRING","") 
+F.Data.DataTable.AddColumn("ListPrice", "Part","STRING","L")
+
+
+v.Local.iRowCount.Set(v.dataview.Table_A!View_A.rowcount--)
+F.Intrinsic.Control.For(v.Local.iC,0,v.Local.iRowCount,1)
+	F.Data.DataTable.AddRow("ORDUPL")
+	
+	f.Intrinsic.String.RPad(v.dataview.Table_A!View_A(v.Local.iC).Customer!Fieldvaltrim," ",7,v.Local.sCustomer)
+	F.Data.DataTable.SetValue("ORDUPL",0,"CustomerNo",V.Local.sCustomer)
+	
+	f.Intrinsic.String.LPad(v.dataview.Table_A!View_A(v.Local.iC).ORderNo!Fieldvaltrim,"0",7,v.Local.sOrderNo)
+	F.Data.DataTable.SetValue("ORDUPL",0,"OrderNumber",V.Local.sOrderNo)
+	
+	'add carrier account > create table > not in upload
+	Function.Intrinsic.Control.If(v.dataview.Table_A!View_A(v.Local.iC).CARRIER_ACCT!Fieldvaltrim,<>,"")
+		Function.Data.DataTable.AddRow("CarrierAcct", "ORDER_NO", V.Local.sOrderNo,"RECORD_NO", "A", "AcctNo",V.dataview.Table_A!View_A(v.Local.iC).CARRIER_ACCT!Fieldvaltrim) 
+	Function.Intrinsic.Control.EndIf
+
+	'add to datatable for backorders
+	Function.Intrinsic.Control.If(v.dataview.Table_A!View_A(v.Local.iC).NoBackorders!Fieldvaltrim,=,False)
+		Function.Data.DataTable.AddRow("Back", "ORDER_NO", V.Local.sOrderNo,"RECORD_NO", "A", "NoBackorders","N") 
+	Function.Intrinsic.Control.ElseIf(v.dataview.Table_A!View_A(v.Local.iC).NoBackorders!Fieldvaltrim,=,True)
+		Function.Data.DataTable.AddRow("Back", "ORDER_NO", V.Local.sOrderNo,"RECORD_NO", "A", "NoBackorders","Y")
+	Function.Intrinsic.Control.EndIf
+
+	'due Date
+	Function.Intrinsic.Control.If(v.dataview.Table_A!View_A(v.Local.iC).DueDate!Fieldvaltrim,<>,"")
+		V.Local.sDueDate.Set(v.dataview.Table_A!View_A(v.Local.iC).DueDate!Fieldvaltrim)
+		f.Intrinsic.String.Format(V.Local.sDueDate,"YYYYMMDD",V.Local.sDueDate)
+		F.Data.DataTable.SetValue("ORDUPL",0,"OrderDueDate",V.Local.sDueDate)
+	Function.Intrinsic.Control.EndIf
+	
+	'f.Intrinsic.String.RPad(v.Local.sHeader," ",27,v.Local.sHeader) 	
+	v.Local.sOrderDate.Set(v.dataview.Table_A!View_A(v.Local.iC).OrderDate.FieldvalTrim)
+	f.Intrinsic.String.Format(v.Local.sOrderDate,"YYYYMMDD",v.Local.sOrderDate)
+	F.Data.DataTable.SetValue("ORDUPL",0,"OrderDate",V.Local.sOrderDate)
+	
+	'PO Number
+	Function.Intrinsic.Control.If(v.dataview.Table_A!View_A(v.Local.iC).PO!FieldvalTrim, <>, "")
+		V.Local.sPO.Set(v.dataview.Table_A!View_A(v.Local.iC).PO!FieldvalTrim)
+		'Strip any hidden characters from the value.
+		F.Data.DataTable.SetValue("ORDUPL",0,"CustomerPO",V.Local.sPO)
+	Function.Intrinsic.Control.EndIf
+
+	'shipping
+	Function.Intrinsic.Control.If(v.dataview.Table_A!View_A(v.Local.iC).ShippingStreet!FieldvalTrim, <>, "")
+		'ship via
+		Function.Intrinsic.Control.If(v.dataview.Table_A!View_A(v.Local.iC).ShipMethod!FieldvalTrim, <>, "")
+
+			F.Data.DataTable.SetValue("ORDUPL",0,"ShipVia",V.DataView.Table_A!View_A(V.Local.iC).ShipMethod!FieldvalTrim)
+			'add to dataTable- uploader does not upload SHIP_VIA
+			Function.Data.DataTable.AddRow("ShipVia", "ORDER_NO", V.Local.sOrderNo,"RECORD_NO", "A", "SHIP_VIA",v.dataview.Table_A!View_A(v.Local.iC).ShipMethod!FieldvalTrim) 	
+		Function.Intrinsic.Control.EndIf
+		'ship To
+		F.Data.DataTable.SetValue("ORDUPL",0,"ShipToName",v.dataview.Table_A!View_A(v.Local.iC).ShipTo!FieldvalTrim)
+
+		'shipping Street 1 and 2 ' this must be split on new line, otherwise....creates new line
+		V.Local.sShipStreet.Set(v.dataview.Table_A!View_A(v.Local.iC).ShippingStreet!FieldvalTrim)
+		
+		F.Intrinsic.String.IsInString(V.Local.sShipStreet,V.ASCII.10,True,V.Local.bExist)
+		
+		F.Intrinsic.Control.If(V.Local.bExist,=,True)
+			F.Intrinsic.String.Split(V.Local.sShipStreet,V.Ambient.NewLine,V.Local.sShipStreet)
+		F.Intrinsic.Control.Else
+			F.Intrinsic.String.Split(V.Local.sShipStreet, V.ASCII.10, V.Local.sShipStreet)
+		F.Intrinsic.Control.EndIf
+		
+		Function.Intrinsic.Control.If(V.Local.sShipStreet(0), <>, "")
+			F.Intrinsic.String.Replace(V.Local.sShipStreet(0),v.Ascii.13, " ", V.Local.sShipStreet(0))
+			F.Intrinsic.String.Replace(V.Local.sShipStreet(0),v.Ascii.10, " ", V.Local.sShipStreet(0))
+			F.Data.DataTable.SetValue("ORDUPL",0,"ShipToAddress1",V.Local.sShipStreet(0))
+		Function.Intrinsic.Control.EndIf
+		
+		Function.Intrinsic.Control.If(V.Local.sShipStreet(1), <>, "OOB")
+			F.Data.DataTable.SetValue("ORDUPL",0,"ShipToAddress2",V.Local.sShipStreet(1))
+		Function.Intrinsic.Control.EndIf
+		
+		'Attention__c > set with attn to the Ship To Address 3 field
+		V.Local.sAttn.Set(v.dataview.Table_A!View_A(v.Local.iC).Attention__c!FieldvalTrim)
+		F.Data.DataTable.SetValue("ORDUPL",0,"ShipToAddress3",V.Local.sAttn)
+		
+		'shipping City
+		F.Data.DataTable.SetValue("ORDUPL",0,"ShipToCity",v.dataview.Table_A!View_A(v.Local.iC).ShippingCity!FieldvalTrim)
+		
+		'shipping State 
+		F.Data.DataTable.SetValue("ORDUPL",0,"ShipToState",V.dataview.Table_A!View_A(v.Local.iC).ShippingState!FieldvalTrim)
+		F.Data.DataTable.SetValue("ORDUPL",0,"ShipToZip",v.dataview.Table_A!View_A(v.Local.iC).ShippingPostalCode!FieldvalTrim)
+		
+		'shipping ATTN
+		F.Data.DataTable.SetValue("ORDUPL",0,"ShipToAttention",V.Local.sAttn)
+	Function.Intrinsic.Control.EndIf
+	
+	'salesman 
+	F.Data.DataTable.SetValue("ORDUPL",0,"Salesman",v.dataview.Table_A!View_A(v.Local.iC).salesman!fieldvaltrim)
+
+	'override autonumber
+'	f.Intrinsic.String.Build("{0}{1}",v.Local.sHeader,"1",v.Local.sHeader)
+	F.Data.DataTable.SetValue("ORDUPL",0,"OverrideAutoNumbering","1")
+
+	'contact name
+	Function.Intrinsic.Control.If(v.dataview.Table_A!View_A(v.Local.iC).ContactName!fieldvaltrim, <>, "")
+		f.Intrinsic.String.RPad(v.dataview.Table_A!View_A(v.Local.iC).ContactName!fieldvaltrim," ",30,v.Local.sContactName)
+		F.Data.DataTable.SetValue("ORDUPL",0,"ContactName",V.Local.sContactName)
+	Function.Intrinsic.Control.EndIf
+	
+	'create a ContactLine to add after line to complete full line contactEmail to start at 2210 contact phone to start at 2310
+	F.Intrinsic.String.RPad(v.dataview.Table_A!View_A(v.Local.iC).ContactEmail!fieldvaltrim," ",100,v.Local.sContactEmail)
+	F.Intrinsic.String.RPad(v.dataview.Table_A!View_A(v.Local.iC).ContactPhone!fieldvaltrim," ",20,v.Local.sContactPhone)
+	f.Intrinsic.String.Build("{0}{1}",v.Local.sContactEmail,v.Local.sContactPhone,v.Local.sContactLine)
+	F.Intrinsic.String.RPad(v.Local.sContactLine, " ", 120, v.Local.sContactLine)
+	''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+	'create a TextLine to insert the special shipping instructions into the text Line 1-10
+	'below the line add customer freight info
+	V.Local.sShipInst.Set(v.dataview.Table_A!View_A(v.Local.iC).ShipInst!Fieldvaltrim)
+	F.Intrinsic.String.Replace(V.Local.sShipInst,v.Ascii.13, " ", V.Local.sShipInst)
+	F.Intrinsic.String.Replace(V.Local.sShipInst,v.Ascii.10, " ", V.Local.sShipInst)
+	F.Intrinsic.String.Build("{0} UPS_Acct: {1}   FedEx_Acct: {2}   Third_Party: {3}", V.Local.sShipInst,v.dataview.Table_A!View_A(v.Local.iC).UPS_Acct_No!fieldvaltrim,v.dataview.Table_A!View_A(v.Local.iC).FedEx_Acct_No!fieldvaltrim,v.dataview.Table_A!View_A(v.Local.iC).Third_Party_Fr_Acct!fieldvaltrim,V.Local.sShipInst)
+	F.Intrinsic.String.RPad(V.Local.sShipInst, " ", 300, V.Local.sShipInstLine)
+	F.Intrinsic.String.Build("ORDERNO='{0}'",v.dataview.Table_A!View_A(v.Local.iC).OrderNO!Fieldvaltrim,v.Local.sFilter)
+	
+	F.Data.DataTable.AddRow("ORDUPLExtra")
+	F.Data.DataTable.SetValue("ORDUPLExtra",0,"ContactEmail",v.dataview.Table_A!View_A(v.Local.iC).ContactEmail!fieldvaltrim)
+	F.Data.DataTable.SetValue("ORDUPLExtra",0,"ContactPhone",v.dataview.Table_A!View_A(v.Local.iC).ContactPhone!fieldvaltrim)
+	
+	F.Intrinsic.String.LimitSplit(V.Local.sShipInstLine,"30",True,V.Local.sShipInstLine)
+	
+	F.Intrinsic.Control.For(V.Local.iCount,0,V.Local.sShipInstLine.UBound,1)
+		F.Intrinsic.Math.Add(V.Local.iCount,1,V.Local.iOrd)
+		F.Intrinsic.String.Build("ExtraTextLine{0}",V.Local.iOrd,V.Local.sTempColumn)
+		F.Data.DataTable.SetValue("ORDUPLExtra",0,V.Local.sTempColumn,V.Local.sShipInstLine(V.Local.iCount))
+	F.Intrinsic.Control.Next(V.Local.iCount)	
+
+	'for every line 
+	F.Data.DataTable.Select("Table_L",v.Local.sFilter,v.Local.sRet) 
+	Function.Intrinsic.Control.If(v.Local.sRet.Trim,<>,"***NORETURN***")
+		f.Intrinsic.String.Split(v.Local.sRet,"*!*",v.Local.sRet) 
+		f.Intrinsic.Control.For(v.Local.iR,0,v.Local.sRet.UBound,1)
+			F.Data.DataTable.AddRow("ORDUPLLINES")
+			'build lines 
+			f.Intrinsic.String.Split(v.dataview.table_L!View_L(v.Local.sRet(v.Local.iR)).Quantity!FieldvalTrim,".",v.Local.sQty) 
+			Function.Intrinsic.Control.If(v.Local.sQty.UBound,<,1) 
+				'no decimal 
+				f.Intrinsic.String.LPad(v.Local.sQty(0).Trim,"0",9,v.Local.sQty(0)) 
+				f.Intrinsic.String.rPad(v.Local.sQty(0).Trim,"0",13,v.Local.sQty(0)) 
+			Function.Intrinsic.Control.Else 
+				f.Intrinsic.String.LPad(v.Local.sQty(0).Trim,"0",9,v.Local.sQty(0)) 
+				f.Intrinsic.String.RPad(v.Local.sQty(1).Trim,"0",4,v.Local.sQty(1))
+				f.Intrinsic.String.Join(v.Local.sQty,"",v.Local.sQty)
+			Function.Intrinsic.Control.EndIf
+			F.Data.DataTable.SetValue("ORDUPLLINES",V.Local.iR,"QtyOrdered",V.Local.sQty)
+		
+			f.Intrinsic.String.RPad(v.dataview.Table_L!View_L(v.Local.sRet(v.Local.iR)).ProductCode!FieldvalTrim," ",20,V.Local.sPart)
+
+			F.Data.DataTable.SetValue("ORDUPLLINES",V.Local.iR,"PartNumber",V.Local.sPart.Left17)
+			F.Data.DataTable.SetValue("ORDUPLLINES",V.Local.iR,"PartRev",V.Local.sPart.Right3)
+			
+			'Location
+			F.Intrinsic.String.RPad(v.dataview.table_l!view_L(v.Local.sRet(v.Local.iR)).Location!Fieldvaltrim," ",2,v.Local.sLoc)
+			F.Data.DataTable.SetValue("ORDUPLLINES",V.Local.iR,"PartLoc",V.Local.sLoc)
+			
+			'part overRidePrice
+			Function.Intrinsic.Control.If(v.dataview.table_l!view_L(v.Local.sRet(v.Local.iR)).UnitPrice!Fieldvaltrim, <>,0)
+'				F.Intrinsic.String.RPad(v.Local.sLine," ",65,v.Local.sLine)
+				V.Local.sUnitPrice.Set(v.dataview.table_l!view_L(v.Local.sRet(v.Local.iR)).UnitPrice!Fieldvaltrim)
+				F.Intrinsic.String.Split(V.Local.sUnitPrice, ".", V.Local.sUnitPrice)
+				V.Local.iUBound.Set(V.Local.sUnitPrice.UBound)
+				Function.Intrinsic.Control.If(V.Local.iUBound, =, 1)
+					f.Intrinsic.String.LPad(V.Local.sUnitPrice(0).Trim,"0",10,V.Local.sUnitPrice(0)) 
+					f.Intrinsic.String.RPad(V.Local.sUnitPrice(1).Trim,"0",6,V.Local.sUnitPrice(1)) 
+					f.Intrinsic.String.Join(V.Local.sUnitPrice,"",V.Local.sUnitPrice)
+					F.Data.DataTable.SetValue("ORDUPLLINES",V.Local.iR,"OverridePrice",V.Local.sUnitPrice)					
+				Function.Intrinsic.Control.Else
+					f.Intrinsic.String.LPad(V.Local.sUnitPrice(0).Trim,"0",10,V.Local.sUnitPrice(0)) 
+					f.Intrinsic.String.RPad(V.Local.sUnitPrice(0).Trim,"0",16,V.Local.sUnitPrice(0)) 
+					F.Data.DataTable.SetValue("ORDUPLLINES",V.Local.iR,"OverridePrice",V.Local.sUnitPrice(0))
+'					f.Intrinsic.String.Build("{0}{1}",v.Local.sLine,V.Local.sUnitPrice(0),v.Local.sLine)
+				Function.Intrinsic.Control.EndIf
+
+			'""""""""""""""""""""ADDED FOR 0.00 LIST PRICE""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+			Function.Intrinsic.Control.Else
+				F.Intrinsic.String.RPad(v.dataview.Table_L!View_L(v.Local.sRet(v.Local.iR)).ProductCode!FieldvalTrim," ",20,V.Local.sPart)
+				Function.Data.DataTable.AddRow("ListPrice", "ORDER_NO", V.Local.sOrderNo,"Part",V.Local.sPart) 	
+			Function.Intrinsic.Control.EndIf
+
+			'part description this is uploaded after the uploader...it does not upload from this code
+			Function.Intrinsic.Control.If(v.dataview.table_l!view_L(v.Local.sRet(v.Local.iR)).Description!Fieldvaltrim, <>,"")
+				V.Local.sDescription.Set(v.dataview.table_l!view_L(v.Local.sRet(v.Local.iR)).Description!Fieldvaltrim)
+				F.Data.DataTable.SetValue("ORDUPLLINES",V.Local.iR,"PartDesc",V.Local.sDescription)
+				'add to the dataTable
+				F.Data.DataTable.AddRow("Desc","ORDER_NO",V.Local.sOrderNo, "PART",V.Local.sPart, "Description", V.Local.sDescription)
+			Function.Intrinsic.Control.EndIf
+			
+			'line order date and promise date 
+			F.Data.DataTable.SetValue("ORDUPLLINES",V.Local.iR,"LineOrderDate",V.Local.sOrderDate)
+			
+			Function.Intrinsic.Control.If(V.dataview.Table_A!View_A(v.Local.iC).NoBackorders!Fieldvaltrim,=,False)
+				'then add promise date, requested ship per lines
+				V.Local.sReqShip.Set(v.dataview.table_l!view_L(v.Local.sRet(v.Local.iR)).Requested_Ship_Date__c!Fieldvaltrim)
+				F.Intrinsic.String.Format(V.Local.sReqShip,"YYYYMMDD",V.Local.sReqShip)
+				F.Data.DataTable.SetValue("ORDUPLLINES",V.Local.iR,"LinePromiseDate",V.Local.sReqShip)
+ 			Function.Intrinsic.Control.Else
+				'add required date for order
+				V.Local.sRequiredShip.Set(V.dataview.Table_A!View_A(v.Local.iC).DueDate!Fieldvaltrim)
+				F.Intrinsic.String.Format(V.Local.sRequiredShip,"YYYYMMDD",V.Local.sRequiredShip)
+				F.Data.DataTable.SetValue("ORDUPLLINES",V.Local.iR,"LinePromiseDate",V.Local.sRequiredShip)
+			Function.Intrinsic.Control.EndIf
+			'User Field 1 in Lines for OrderItem Id. To be used in shipping.
+			F.Data.DataTable.SetValue("ORDUPLLINES",V.Local.iR,"UserField1",V.dataview.table_L!View_L(v.Local.sRet(v.Local.iR)).Id!FieldvalTrim)
+
+			v.Local.sLine.Set("")
+		F.Intrinsic.Control.Next(v.Local.iR)
+		
+	Function.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.CallSub(ORDUPLCreateFile)
+	v.Local.sFull.Set("")
+	v.Local.sHeader.Set("")
+	v.Local.sLine.Set("")	
+F.Intrinsic.Control.Next(v.Local.iC)
+
+F.Intrinsic.Control.CallSub(ORDUPLSync)
+
+F.Intrinsic.Control.CallSub(SaveTables)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("BuildFile_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Order_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.BuildFile.End
+
+Program.Sub.Check_Dir.Start
+F.Intrinsic.Control.SetErrorHandler("Check_Dir_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.i.Declare(Long)
+v.Local.sDir.Declare(String)
+v.Local.sSubDir.Declare(String)  
+v.Local.bExists.Declare(Boolean)
+'Files\WEb_ORDERS 
+F.Intrinsic.String.Build("{0}\WEB_ORDERS",v.Caller.FilesDir,v.Local.sDir) 
+F.Intrinsic.File.DirExists(v.Local.sDir,v.Local.bExists) 
+F.Intrinsic.Control.If(v.Local.bExists,=,False) 
+	f.Intrinsic.File.CreateDir(v.Local.sDir) 
+Function.Intrinsic.Control.EndIf
+F.Intrinsic.String.Split("INV_Running*!*UPLOADED*!*WEB_ERRORS*!*IS_RUNNING","*!*",v.Local.sSubDir) 
+F.Intrinsic.Control.For(v.Local.i,0,v.Local.sSubDir.UBound,1) 
+	F.Intrinsic.String.Build("{0}\{1}",v.Local.sDir,v.Local.sSubDir(v.Local.i).Trim,v.Local.sSubDir(v.Local.i)) 
+	f.Intrinsic.File.DirExists(v.Local.sSubDir(v.Local.i),v.Local.bExists) 
+	F.Intrinsic.Control.If(v.Local.bExists,=,False) 
+		f.Intrinsic.File.CreateDir(v.Local.sSubDir(v.Local.i)) 
+	Function.Intrinsic.Control.EndIf
+f.Intrinsic.Control.Next(v.Local.i) 
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Check_Dir_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Order_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Check_Dir.End
+
+Program.Sub.RemoveFromDB.Start
+F.Intrinsic.Control.SetErrorHandler("RemoveFromDB_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+
+V.Local.ssql.Declare(String)
+V.Local.iC.Declare(Long)
+'select all orders and revs where status = complete/signedoff
+
+'Function.Automation.SalesForce.SelectToDataTable("Table_TEST", True, "Select OrderNumber, STATUS From 'ORDER' ")
+
+Function.Automation.SalesForce.SelectToDataTable("Table_R", True, "Select RIGHT([Order].OrderNumber,7) as OrderNO,[Order].Revision_Number__c as REV,'' as OldREV, '' as Shipped, '' as Uploaded  From [Order] Where STATUS = 'Activated'")
+
+'first delete the ones that have a revision > current
+F.Data.Dictionary.CreateFromSQL("Dict", "con","Select Right(GCG_4132_ORDER_REV.OrderNO, 7)as OrderNO , REV as OldREV From GCG_4132_ORDER_REV")
+Function.Data.Dictionary.SetDefaultReturn("Dict", "New")
+Function.Data.DataTable.FillFromDictionary("Table_R", "Dict", "OrderNO", "OldREV")
+F.Data.dictionary.close("Dict")
+
+'check if shipped
+F.Data.Dictionary.CreateFromSQL("Dict", "con","Select Right(SHIPMENT_HEADER.Order_NO, 7)as OrderNO , Order_REC as Shipped  From SHIPMENT_HEADER")
+Function.Data.Dictionary.SetDefaultReturn("Dict", "")
+Function.Data.DataTable.FillFromDictionary("Table_R", "Dict", "OrderNO", "Shipped")
+F.Data.dictionary.close("Dict")
+
+'if REV > OldREV, then delete it from the database, update REV in GSS, upload current 
+Function.Intrinsic.Control.If(V.DataTable.Table_R.Exists, =, TRUE)
+	F.Intrinsic.Control.For(V.Local.iC, 0, V.DataTable.Table_R.RowCount--, 1)
+		Function.Intrinsic.Control.If(Variable.DataTable.Table_R(V.Local.iC).REV!FieldValTrim, >, Variable.DataTable.Table_R(V.Local.iC).OldREV!FieldValTrim)
+			Function.Intrinsic.Control.If(Variable.DataTable.Table_R(V.Local.iC).Shipped!FieldValTrim, =, "")
+				'then there has been no shipment-delete order
+				F.Intrinsic.String.Build("Delete From ORDER_HEADER  Where ORDER_NO = '{0}'", Variable.DataTable.Table_R(V.Local.iC).OrderNO!FieldValTrim, V.Local.ssql)
+				F.ODBC.Connection!con.Execute(V.Local.ssql)
+			Function.Intrinsic.Control.EndIf
+		Function.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Next(V.Local.iC)
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("RemoveFromDB_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Order_Sync.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	
+Function.Intrinsic.Control.EndIf
+Program.Sub.RemoveFromDB.End
+
+Program.Sub.SaveTables.Start
+F.Intrinsic.Control.SetErrorHandler("SaveTables_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sRet.Declare(String)
+V.Local.sTemp.Declare(String)
+V.Local.ssql.Declare(String)
+V.Local.sRec.Declare(String)
+V.Local.iC.Declare(String)
+
+'description different from INVENTORY_MSTR
+Function.Data.DataView.Create("Desc", "Desc_View")
+Function.Data.DataView.ToString("Desc", "Desc_View" ,"*!*", "@!@", V.Local.sRet)
+Function.Intrinsic.Control.If(V.Local.sRet, <> , "")
+	F.Intrinsic.String.Split(V.Local.sRet, "@!@", V.Local.sRet)
+	F.Intrinsic.Control.For(V.Local.iC, 0,V.Local.sRet.UBound,1)
+		F.Intrinsic.String.Split(V.Local.sRet(V.Local.iC), "*!*", V.Local.sTemp)
+		F.Intrinsic.String.Build("Update ORDER_LINES Set DESCRIPTION = '{0}' Where ORDER_NO = '{1}' And PART = '{2}'", V.Local.sTemp(2),V.Local.sTemp(0),V.Local.sTemp(1), V.Local.ssql)
+		Function.ODBC.Connection!con.Execute(V.Local.ssql)
+	F.Intrinsic.Control.Next(V.Local.iC)	
+Function.Intrinsic.Control.EndIf
+
+'Ship Via
+Function.Data.DataView.Create("ShipVia", "ShipVia_View")
+Function.Data.DataView.ToString("ShipVia","ShipVia_View","*!*", "@!@", V.Local.sRet)
+Function.Intrinsic.Control.If(V.Local.sRet, <> , "")
+	F.Intrinsic.String.Split(V.Local.sRet, "@!@", V.Local.sRet)
+	F.Intrinsic.Control.For(V.Local.iC, 0,V.Local.sRet.UBound,1)
+	F.Intrinsic.String.Split(V.Local.sRet(V.Local.iC), "*!*", V.Local.sTemp)
+	V.Local.sRec.Set(V.Local.sTemp(1))
+	F.Intrinsic.String.LPad(V.Local.sRec, " ", 3, V.Local.sRec)
+	F.Intrinsic.String.RPad(V.Local.sRec, " ", 4, V.Local.sRec)
+	F.Intrinsic.String.Build("Update ORDER_HEADER Set SHIP_VIA = '{0}' Where ORDER_NO = '{1}' And RECORD_NO = '{2}'", V.Local.sTemp(2),V.Local.sTemp(0),V.Local.sRec, V.Local.ssql)
+	Function.ODBC.Connection!con.Execute(V.Local.ssql)
+	'added 4/18/2017 DRH
+	F.Intrinsic.String.Build("Update ORDER_SHIP_TO Set SHIP_VIA_SHIP = '{0}' Where ORDER_NO = '{1}' And RECORD_NO = '  A'", V.Local.sTemp(2),V.Local.sTemp(0), V.Local.ssql)
+	Function.ODBC.Connection!con.Execute(V.Local.ssql)
+	F.Intrinsic.String.Build("Update ORDER_SHIP_TO Set SHIP_VIA_SHIP = '{0}' Where ORDER_NO = '{1}' And RECORD_NO = '  C'", V.Local.sTemp(2),V.Local.sTemp(0),V.Local.ssql)
+	Function.ODBC.Connection!con.Execute(V.Local.ssql)
+	F.Intrinsic.Control.Next(V.Local.iC)
+Function.Intrinsic.Control.EndIf
+
+'ORDER_HEADER FLAG_NO_BACKORDER
+Function.Data.DataView.Create("Back", "Back_View")
+Function.Data.DataView.ToString("Back","Back_View","*!*", "@!@", V.Local.sRet)
+Function.Intrinsic.Control.If(V.Local.sRet, <> , "")
+	F.Intrinsic.String.Split(V.Local.sRet, "@!@", V.Local.sRet)
+	F.Intrinsic.Control.For(V.Local.iC, 0,V.Local.sRet.UBound,1)
+		F.Intrinsic.String.Split(V.Local.sRet(V.Local.iC), "*!*", V.Local.sTemp)
+		V.Local.sRec.Set(V.Local.sTemp(1))
+		F.Intrinsic.String.LPad(V.Local.sRec, " ", 3, V.Local.sRec)
+		F.Intrinsic.String.RPad(V.Local.sRec, " ", 4, V.Local.sRec)
+		F.Intrinsic.String.Build("Update ORDER_HEADER Set Flag_NO_Backorder = '{0}' Where ORDER_NO = '{1}' And RECORD_NO = '{2}'", V.Local.sTemp(2),V.Local.sTemp(0),V.Local.sRec, V.Local.ssql)
+		Function.ODBC.Connection!con.Execute(V.Local.ssql)
+	F.Intrinsic.Control.Next(V.Local.iC)
+Function.Intrinsic.Control.EndIf
+
+'CARRIER ACCOUNT
+Function.Data.DataView.Create("CarrierAcct", "CarrierAcct_View")
+Function.Data.DataView.ToString("CarrierAcct","CarrierAcct_View","*!*", "@!@", V.Local.sRet)
+Function.Intrinsic.Control.If(V.Local.sRet, <> , "")
+	F.Intrinsic.String.Split(V.Local.sRet, "@!@", V.Local.sRet)
+	F.Intrinsic.Control.For(V.Local.iC, 0,V.Local.sRet.UBound,1)
+		F.Intrinsic.String.Split(V.Local.sRet(V.Local.iC), "*!*", V.Local.sTemp)
+		V.Local.sRec.Set(V.Local.sTemp(1))
+		F.Intrinsic.String.LPad(V.Local.sRec, " ", 3, V.Local.sRec)
+		F.Intrinsic.String.RPad(V.Local.sRec, " ", 4, V.Local.sRec)
+		F.Intrinsic.String.Build("Update ORDER_HEADER Set Carrier_Acct = '{0}' Where ORDER_NO = '{1}' And RECORD_NO = '{2}'", V.Local.sTemp(2).PSQLFriendly,V.Local.sTemp(0),V.Local.sRec, V.Local.ssql)
+		Function.ODBC.Connection!con.Execute(V.Local.ssql)
+	F.Intrinsic.Control.Next(V.Local.iC)
+Function.Intrinsic.Control.EndIf
+
+'LIST PRICE 0.00
+Function.Data.DataView.Create("ListPrice", "ListPrice_View")
+Function.Data.DataView.ToString("ListPrice","ListPrice_View","*!*", "@!@", V.Local.sRet)
+Function.Intrinsic.Control.If(V.Local.sRet, <> , "")
+	F.Intrinsic.String.Split(V.Local.sRet, "@!@", V.Local.sRet)
+	F.Intrinsic.Control.For(V.Local.iC, 0,V.Local.sRet.UBound,1)
+		F.Intrinsic.String.Split(V.Local.sRet(V.Local.iC), "*!*", V.Local.sTemp)
+		F.Intrinsic.String.Build("Select PRICE, DISCOUNT_PRICE, PRICE_ORDER, PRICE_DISC_ORD From ORDER_LINES Where ORDER_NO = '{0}' And RECORD_TYPE = 'L' And PART = '{1}'", V.Local.sTemp(0),V.Local.sTemp(1), V.Local.ssql)
+		Function.ODBC.Connection!con.OpenLocalRecordsetRW("rst", V.Local.ssql)
+		
+		F.Intrinsic.Control.If(V.ODBC.con!rst.EOF,<>,True)
+			F.ODBC.con!rst.Set!Price("0.00")
+			F.ODBC.con!rst.Set!DISCOUNT_PRICE("0.00")
+			F.ODBC.con!rst.Set!PRICE_ORDER("0.00")
+			F.ODBC.con!rst.Set!PRICE_DISC_ORD("0.00")
+			F.ODBC.con!rst.Update
+		F.Intrinsic.Control.EndIf
+		
+		F.ODBC.con!rst.Close
+		'F.Intrinsic.String.Build("Update ORDER_LINES Set PRICE = '0.00' Where ORDER_NO = '{0}' And RECORD_TYPE = 'L' And PART = '{1}'", V.Local.sTemp(0),V.Local.sTemp(1), V.Local.ssql)
+		'Function.ODBC.Connection!con.Execute(V.Local.ssql)
+	F.Intrinsic.Control.Next(V.Local.iC)
+Function.Intrinsic.Control.EndIf
+
+
+Function.Intrinsic.Control.CallSub(changerev)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("SaveTables_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Order_Sync.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.SaveTables.End
+
+Program.Sub.IsRunning.Start
+F.Intrinsic.Control.SetErrorHandler("IsRunning_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+V.Local.sFile.Declare(String)
+V.Local.bExists.Declare(Boolean)
+V.Local.iPID.Declare(Long)
+V.Local.sCurrentPIDProcess.Declare(String)
+
+V.Local.iPID.Set(V.Ambient.PID)
+
+'check to see if program is already running. First check for file
+F.Intrinsic.String.Build("{0}\\WEB_ORDERS\IS_RUNNING\Running_{1}.txt",V.Caller.FilesDir,"Y",V.Local.sFile)
+F.Intrinsic.File.Exists(V.Local.sFile,V.Local.bExists)
+F.Intrinsic.Control.If(V.Local.bExists,=,False)
+	'Create Program Status file to let it know its running
+	F.Intrinsic.File.String2File(V.Local.sFile,V.Local.iPID.String)
+Function.Intrinsic.Control.Else
+ 'then the file exists: get the PID from the file to see if the process is still running
+	F.Intrinsic.File.File2String(V.Local.sFile, V.Local.sCurrentPIDProcess)
+	F.Intrinsic.Task.PIDRunning(V.Local.sCurrentPIDProcess,V.Local.bExists)
+	Function.Intrinsic.Control.If(V.Local.bExists, =, TRUE)
+		'the the program is running- don't start new process
+		Function.Intrinsic.Control.End
+
+	Function.Intrinsic.Control.Else
+		'the program has stopped, but did not delete the file. Delete the file and create a new file for current run
+		Function.Intrinsic.File.DeleteFile(V.Local.sFile)
+		F.Intrinsic.File.String2File(V.Local.sFile,V.Local.iPID.String)
+	Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndIf
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("IsRunning_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Order_Sync.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.IsRunning.End
+
+Program.Sub.ChangeRev.Start
+F.Intrinsic.Control.SetErrorHandler("ChangeRev_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+V.Local..BulkDeclareString(ssql, sRet)
+V.Local.iC.Declare(Long)
+V.Local.sExists.Declare(Boolean)
+
+'check if uploaded
+F.Data.Dictionary.CreateFromSQL("Dict", "con","Select Right(ORDER_HEADER.Order_NO, 7)as OrderNO , RECORD_NO as Uploaded  From ORDER_HEADER")
+Function.Data.Dictionary.SetDefaultReturn("Dict", "")
+Function.Data.DataTable.FillFromDictionary("Table_R", "Dict", "OrderNO", "Uploaded")
+F.Data.dictionary.close("Dict")
+
+
+'save the new rev number
+F.Intrinsic.Control.For(V.Local.iC, 0, V.DataTable.Table_R.RowCount--, 1)
+	'check if the order has shipped
+	Function.Intrinsic.Control.If(Variable.DataTable.Table_R(V.Local.iC).Shipped!FieldValTrim, =, "")
+		'if it has not shipped, does it now exist in GSS?
+		Function.Intrinsic.Control.If(Variable.DataTable.Table_R(V.Local.iC).Uploaded!FieldValTrim, <>, "")
+			Function.Intrinsic.Control.If(Variable.DataTable.Table_R(V.Local.iC).OldREV!FieldValTrim, =, "New")
+				'then add new record to custom table
+				F.Intrinsic.String.Build("Insert Into GCG_4132_ORDER_REV (ORDERNO, REV) Values ('{0}', '{1}')", Variable.DataTable.Table_R(V.Local.iC).OrderNO!FieldValTrim, Variable.DataTable.Table_R(V.Local.iC).REV!FieldValTrim, V.Local.ssql)
+				F.ODBC.Connection!con.Execute(V.Local.ssql)
+			Function.Intrinsic.Control.Else
+				'update table
+				F.Intrinsic.String.Build("UPDATE GCG_4132_ORDER_REV Set REV = '{0}' Where ORDERNO = '{1}'",Variable.DataTable.Table_R(V.Local.iC).REV!FieldValTrim ,Variable.DataTable.Table_R(V.Local.iC).OrderNO!FieldValTrim, V.Local.ssql)
+				F.ODBC.Connection!con.Execute(V.Local.ssql)
+			Function.Intrinsic.Control.EndIf
+		Function.Intrinsic.Control.EndIf
+	Function.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(V.Local.iC)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("ChangeRev_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Order_Sync.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	f.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.ChangeRev.End
+
+Program.Sub.Comments.Start
+${$0$}$GCG_4132_SalesForce_Order_Sync.g2u$}$DH1$}$10/7/2016 8:59:43 AM$}$False
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Original customer was SMS Millcraft.
+
+This is a re-write of the original script due to many inconsistencies with the original.
+Program.Sub.Comments.End
