@@ -1,0 +1,302 @@
+Program.Sub.ScreenSU.Start
+Gui.FormFreight..Create
+Gui.FormFreight..Caption("Addl Freight")
+Gui.FormFreight..Size(3405,4020)
+Gui.FormFreight..MinX(0)
+Gui.FormFreight..MinY(0)
+Gui.FormFreight..Position(0,0)
+Gui.FormFreight..BackColor(-2147483633)
+Gui.FormFreight..MousePointer(0)
+Gui.FormFreight..Event(UnLoad,FormFreight_UnLoad)
+Gui.FormFreight.lbl1.Create(Label,"UPS Account Number",True,1935,255,0,120,270,True,0,"Arial",8,-986896,0)
+Gui.FormFreight.lbl2.Create(Label,"FedEx Account Number",True,1935,255,0,120,1050,True,0,"Arial",8,15790320,0)
+Gui.FormFreight.lbl2.ForeColor(0)
+Gui.FormFreight.lbl3.Create(Label,"Third Party Freight Number",True,2565,255,0,90,1830,True,0,"Arial",8,15790320,0)
+Gui.FormFreight.lbl3.ForeColor(0)
+Gui.FormFreight.txtUPSAccountNumber.Create(TextBox,"",True,2655,300,0,120,510,True,0,"Arial",8,-2147483643,1)
+Gui.FormFreight.txtUPSAccountNumber.MaxLength(10)
+Gui.FormFreight.txtUPSAccountNumber.Event(GotFocus,txtUPSAccountNumber_GotFocus)
+Gui.FormFreight.txtFedExAccount.Create(TextBox,"",True,2655,300,0,120,1275,True,0,"Arial",8,-2147483643,1)
+Gui.FormFreight.txtFedExAccount.ForeColor(0)
+Gui.FormFreight.txtFedExAccount.MaxLength(10)
+Gui.FormFreight.txtFedExAccount.Event(GotFocus,txtFedExAccount_GotFocus)
+Gui.FormFreight.txtThirdpartyFreight.Create(TextBox,"",True,2655,300,0,120,2085,True,0,"Arial",8,-2147483643,1)
+Gui.FormFreight.txtThirdpartyFreight.ForeColor(0)
+Gui.FormFreight.txtThirdpartyFreight.MaxLength(10)
+Gui.FormFreight.txtThirdpartyFreight.Event(GotFocus,txtThirdpartyFreight_GotFocus)
+Gui.FormFreight.cmdSave.Create(Button)
+Gui.FormFreight.cmdSave.Size(855,375)
+Gui.FormFreight.cmdSave.Position(120,2925)
+Gui.FormFreight.cmdSave.Caption("Save")
+Gui.FormFreight.cmdSave.Event(Click,cmdSave_Click)
+Gui.FormFreight.chkRebate.Create(CheckBox)
+Gui.FormFreight.chkRebate.Size(2670,360)
+Gui.FormFreight.chkRebate.Position(120,2475)
+Gui.FormFreight.chkRebate.Caption("Rebate Participant")
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Variable.Global.bExists.Declare(Boolean,False)
+Variable.Global.sCustomer.Declare(String)
+Variable.Global.sID.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.sUser.Declare(STring) 
+v.Local.sPass.Declare(String) 
+v.Local.sSecTok.Declare(STring) 
+v.Local.sConString.Declare(String) 
+V.Local.sRet.Declare(String)
+V.Local.sTest.Declare(String)
+
+F.ODBC.Connection!conX.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass, 1000000000)
+
+'this happens in another script: GCG_4132_SF_Cust_Populate.g2u
+''Function.Intrinsic.Control.If(v.Caller.Hook,=,"14350") 
+''	'set addl freight script 3
+''	v.Passed.000203.Set("Addl Freight")
+''	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.If(v.Caller.Hook,=,"14380") 
+	'get Connection string
+	F.ODBC.Connection!conX.ExecuteAndReturn("Select rTrim(USER_NAME), rTrim(PASS), rTrim(SECTOK) From GCG_4132_CONNECTION Where NUM = '1'", V.Local.sRet)
+	F.Intrinsic.String.Split(V.Local.sRet, "*!*", V.Local.sRet)
+	
+	v.Local.sUser.Set(V.Local.sRet(0))
+	v.Local.sPass.Set(V.Local.sRet(1))
+	v.Local.sSecTok.Set(V.Local.sRet(2))
+	
+	'Set Connection String
+	F.Intrinsic.String.Build("Offline=False;Password={1};Security Token={2};User={0};Use Sandbox=False",v.Local.sUser,v.Local.sPass,v.Local.sSecTok,v.Local.sConString) 
+	
+	
+	'Set Connection String 
+	F.Automation.SalesForce.SetConnectionString(v.Local.sConString)
+
+
+	v.Global.sCustomer.Set(v.Passed.000002) 
+	'''ADD PAD
+	F.Intrinsic.String.LPad(v.Global.sCustomer, "0", 6, v.Global.sCustomer)
+	'have to pull information from SF? 
+	f.Intrinsic.UI.InvokeWaitDialog("Loading...")
+	Function.Intrinsic.Control.CallSub(pullfromsf)
+	'script 3
+	Function.Intrinsic.Control.CallSub(init_load)
+	F.Intrinsic.UI.CloseWaitDialog
+	Gui.FormFreight..Show
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Addl_Freight_Maint.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(formfreight_unload)	
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.FormFreight_UnLoad.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+F.ODBC.Connection!conX.Close 
+Function.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Addl_Freight_Maint.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.End
+
+Function.Intrinsic.Control.EndIf
+Program.Sub.FormFreight_UnLoad.End
+
+Program.Sub.cmdSave_Click.Start
+F.Intrinsic.Control.SetErrorHandler("FormFreight_UnLoad_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.sSQL.Declare(String)
+v.Local.bRebate.Declare(Boolean)
+Function.Intrinsic.Control.BlockEvents
+
+F.Intrinsic.UI.InvokeWaitDialog("Saving...") 
+F.Intrinsic.String.Build("Select * From GCG_4132_Frght_Info Where Customer = '{0}'",v.Global.sCustomer,v.Local.sSQL) 
+f.ODBC.Connection!conX.OpenLocalRecordsetRW("rst",v.Local.sSQL) 
+
+Function.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,=,True) 
+	f.ODBC.conX!rst.AddNew
+	F.ODBC.conX!rst.Set!Customer(v.Global.sCustomer) 
+Function.Intrinsic.Control.EndIf
+
+f.ODBC.conX!rst.Set!UPS_ACCT_NO(v.Screen.FormFreight!txtUPSAccountNumber.Text) 
+F.ODBC.conX!rst.Set!FEDEx_Acct_NO(v.Screen.FormFreight!txtFedExAccount.Text) 
+f.ODBC.conX!rst.Set!Third_Party_Fr_Acct(v.Screen.FormFreight!txtThirdpartyFreight.text) 
+F.ODBC.conX!rst.Set!Rebate_Participant(v.Screen.FormFreight!chkRebate.Value) 
+f.ODBC.conX!rst.Update
+f.ODBC.conX!rst.Close 
+
+Function.Intrinsic.Control.If(v.Screen.FormFreight!chkRebate.Value,=,0) 
+	v.Local.bRebate.Set(False) 
+Function.Intrinsic.Control.Else 
+	v.Local.bRebate.Set(True) 
+Function.Intrinsic.Control.EndIf
+
+'lets also write bck to SF if we exist in SF as a GS customer. If we don't exist don't do it. 
+F.Intrinsic.Control.If(v.Global.bExists,=,True) 
+	f.Intrinsic.String.Build("Update Account Set Third_Party_Freight__C = '{0}', UPS_ACCOUNT_NUMBER__C = '{1}', FEDEX_ACCOUNT_NUMBER__C = '{2}', Rebate_Participant__C = '{4}'Where ID = '{3}'",v.Screen.FormFreight!txtThirdpartyFreight.Text,v.Screen.FormFreight!txtUPSAccountNumber.Text,v.Screen.FormFreight!txtFedExAccount.text,v.Global.sID,v.Local.bRebate,v.Local.sSQL) 
+	F.Automation.SalesForce.ExecuteSQL(v.Local.sSQL)	
+Function.Intrinsic.Control.EndIf
+
+Function.Intrinsic.Control.UnBlockEvents
+F.Intrinsic.UI.CloseWaitDialog
+Function.Intrinsic.Control.CallSub(formfreight_unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("FormFreight_UnLoad_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Addl_Freight_Maint.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(formfreight_unload)	
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdSave_Click.End
+
+Program.Sub.txtUPSAccountNumber_GotFocus.Start
+F.Intrinsic.Control.SetErrorHandler("cmdSave_Click_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+Gui.FormFreight.txtUPSAccountNumber.SelectAll
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmdSave_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Addl_Freight_Maint.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(formfreight_unload)	
+Function.Intrinsic.Control.EndIf
+Program.Sub.txtUPSAccountNumber_GotFocus.End
+
+Program.Sub.txtFedExAccount_GotFocus.Start
+F.Intrinsic.Control.SetErrorHandler("txtUPSAccountNumber_GotFocus_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+gui.FormFreight.txtFedExAccount.SelectAll
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("txtUPSAccountNumber_GotFocus_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Addl_Freight_Maint.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(formfreight_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.txtFedExAccount_GotFocus.End
+
+Program.Sub.txtThirdpartyFreight_GotFocus.Start
+F.Intrinsic.Control.SetErrorHandler("txtFedExAccount_GotFocus_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+gui.FormFreight.txtThirdpartyFreight.SelectAll
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("txtFedExAccount_GotFocus_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Addl_Freight_Maint.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(formfreight_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.txtThirdpartyFreight_GotFocus.End
+
+Program.Sub.Init_Load.Start
+F.Intrinsic.Control.SetErrorHandler("Init_Load_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.sSQL.Declare(String) 
+
+'only want to do this is it doesn't exist, because if it exists we pulled from SF. It should be the same, but /shrug
+Function.Intrinsic.Control.If(v.Global.bExists,=,False)
+	F.Intrinsic.String.Build("Select * From GCG_4132_Frght_Info Where Customer = '{0}'",v.Global.sCustomer,v.Local.sSQL) 
+	f.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL) 
+	
+	Function.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,=,False) 
+		gui.FormFreight.txtFedExAccount.Text(v.ODBC.conX!rst.FieldValTrim!FEDEX_ACCT_NO) 
+		Gui.FormFreight.txtUPSAccountNumber.Text(v.ODBC.conX!rst.FieldValTrim!UPS_ACCT_NO) 
+		gui.FormFreight.txtThirdpartyFreight.Text(v.ODBC.conX!rst.FieldValTrim!Third_Party_Fr_Acct)
+		Gui.FormFreight.chkRebate.Value(v.ODBC.conx!rst.FieldValTrim!Rebate_Participant) 
+	Function.Intrinsic.Control.EndIf
+	
+	f.ODBC.conX!rst.Close 
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Init_Load_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Addl_Freight_Maint.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(formfreight_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Init_Load.End
+
+Program.Sub.PullFromSF.Start
+F.Intrinsic.Control.SetErrorHandler("PullFromSF_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sSQL.Declare(String) 
+
+F.Intrinsic.String.Build("Select ID,Rebate_Participant__C,UPS_ACCOUNT_NUMBER__C, FEDEX_ACCOUNT_NUMBER__C, THIRD_PARTY_FREIGHT__C FROM ACCOUNT WHERE CUSTOM2__C = '{0}'",v.Global.sCustomer.Trim,v.Local.sSQL) 
+'select to datatable. 
+F.Automation.SalesForce.SelectToDataTable("SF_ACCT",True,v.Local.sSQL) 
+
+F.Intrinsic.Control.If(v.datatable.SF_ACCT.RowCount,>,0) 
+	'means this record is in SF so load into textboxes. 
+	Gui.FormFreight.txtFedExAccount.Text(v.datatable.SF_ACCT(0).FEDEX_ACCOUNT_NUMBER__C!FieldValTrim) 
+	Gui.FormFreight.txtUPSAccountNumber.Text(v.datatable.SF_ACCT(0).UPS_ACCOUNT_NUMBER__C!FieldValTrim) 
+	Gui.FormFreight.txtThirdpartyFreight.Text(v.datatable.sF_acct(0).Third_Party_Freight__C!FieldValTrim) 
+	gui.FormFreight.chkRebate.Value(v.datatable.SF_Acct(0).Rebate_Participant__C!FieldValTrim)
+	v.Global.sID.Set(v.datatable.sf_Acct(0).ID!FieldValTrim)
+	v.Global.bExists.Set(True)
+Function.Intrinsic.Control.EndIf
+
+'close datatable. 
+F.Data.DataTable.Close("SF_ACCT")
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("PullFromSF_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4132_SalesForce_Addl_Freight_Maint.g2u",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(formfreight_unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.PullFromSF.End
+
+Program.Sub.Comments.Start
+${$0$}$GCG_SalesForce_Addl_Freight_Maint$}$TRT$}$9/12/2016 2:15:12 PM$}$False
+${$1$}$$}$$}$1$}$14380$}$$}$9/13/2016 7:47:58 AM$}$Script 3 Button Hook
+${$1$}$$}$$}$0$}$14350$}$$}$9/13/2016 7:47:50 AM$}$Populate Hook
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$'This is for Quickmount customer 
+we are givine them custom places to track FedEx Account Number, Third Party Freight 
+and UPS Account Number. 
+Save to custom GCG_4132_Frght_Info
+
+don't hate me whoever is reading this. you'll notice that the subs have not whitespace. that's cause whitespace slows stuff down apparently, so yes it annoying and hard to read. but the runtime is much quicker. and thats what is important....right?
+Program.Sub.Comments.End
